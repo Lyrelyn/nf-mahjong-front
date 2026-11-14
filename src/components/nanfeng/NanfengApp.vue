@@ -72,6 +72,10 @@ function begin() {
 
 /** 牌桌里点「返回大厅」：回到这一页，保留刚才的选择。 */
 function backToLobby() {
+  if (setup.value !== null) {
+    pickedPlayers.value = setup.value.players
+    if (setup.value.ma > 0) pickedMa.value = setup.value.ma
+  }
   setup.value = null
 }
 </script>
