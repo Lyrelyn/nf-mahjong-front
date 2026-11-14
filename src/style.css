@@ -3824,3 +3824,20 @@ button { font: inherit; }
   }
   .lobby-actions { max-height: none; overflow: visible; }
 }
+
+/* 手机（竖屏尤其）：头像与座位卡再收一档。
+   手机浏览器全屏后可用高度本来就小，四家的身份条不能各占一大块。 */
+@media (max-width: 620px) {
+  .game-app .game-table-hud :is(.avatar-wrap, .user-identity) .avatar {
+    width: clamp(24px, 6cqw, 32px);
+    height: clamp(24px, 6cqw, 32px);
+  }
+  .game-app .game-table-hud :is(.avatar-wrap, .user-identity) {
+    max-width: clamp(82px, 26cqw, 104px);
+    padding: 2px 4px;
+    gap: 1px 4px;
+  }
+  .game-app .game-table-hud .player-info strong { font-size: 10px; line-height: 1.2; }
+  .game-app .game-table-hud .player-info > span { font-size: 11px; line-height: 1.2; }
+  .game-app .game-table-hud .dealer-badge { min-width: 16px; padding: 0 2px; font-size: 10px; }
+}

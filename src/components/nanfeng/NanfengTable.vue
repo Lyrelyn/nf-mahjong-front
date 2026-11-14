@@ -3,7 +3,7 @@
 // 只做两件事——把南丰状态投影成 HUD 要的视图、把 HUD 的事件翻成引擎动作。
 //
 // 规则判定、合法动作集合都由运行时提供；这里不判断任何牌型。
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import GameTableHud from '../table/GameTableHud.vue'
 import { useAudio, useEffectPlayer } from '../../game/core/presentation/useAudio'
 import { toCode } from '../../game/nanfeng/tileCodec'
@@ -158,6 +158,30 @@ function signed(value: number): string {
 
 /** 码牌局中不公开，`tiles === null` 表示还没到结算。 */
 const maRevealed = computed(() => snap.value.ma.tiles !== null)
+
+/** 买码席可以收起（有些人嫌它挡牌桌右上角）；收起后留一个小「码」按钮点回来。 */
+const maHidden = ref(false)
+const hasMaSeat = computed(() => snap.value.ma.count > 0 || snap.value.ma.buyerName !== '')
+
+/**
+ * 浏览器全屏：手机上地址栏会占掉一条，全屏后牌桌能顶到屏幕边。
+ * iOS Safari 的 iPhone 不支持元素全屏，会抛错——静默忽略，按钮保持原样。
+ */
+const isFullscreen = ref(false)
+function syncFullscreen() {
+  isFullscreen.value = document.fullscreenElement !== null
+}
+async function toggleFullscreen() {
+  try {
+    if (document.fullscreenElement === null) await document.documentElement.requestFullscreen()
+    else await document.exitFullscreen()
+  } catch {
+    // 不支持就算了
+  }
+  syncFullscreen()
+}
+onMounted(() => document.addEventListener('fullscreenchange', syncFullscreen))
+onBeforeUnmount(() => document.removeEventListener('fullscreenchange', syncFullscreen))
 </script>
 
 <template>
@@ -186,7 +210,8 @@ const maRevealed = computed(() => snap.value.ma.tiles !== null)
     </div>
 
     <!-- 第 5 个参与者：买码位（5 人换座时就是本局轮空的那个人）。码牌局中不公开，局末才翻面。 -->
-    <section v-if="snap.ma.count > 0 || snap.ma.buyerName" class="nf-ma">
+    <section v-if="hasMaSeat && !maHidden" class="nf-ma">
+      <button class="nf-ma-close" type="button" aria-label="隐藏买码" title="隐藏买码" @click="maHidden = true">×</button>
       <header class="nf-ma-head">
         <span class="nf-ma-badge">码</span>
         <span class="nf-ma-name">
@@ -219,6 +244,15 @@ const maRevealed = computed(() => snap.value.ma.tiles !== null)
         <em v-if="snap.ma.isHumanBuyer" class="nf-ma-hint">· 点头像可切视角</em>
       </footer>
     </section>
+
+    <button
+      v-if="hasMaSeat && maHidden"
+      class="nf-ma-restore"
+      type="button"
+      aria-label="显示买码"
+      title="显示买码"
+      @click="maHidden = false"
+    >码</button>
 
     <div v-if="showDebug" class="nf-debug">{{ debugText }}</div>
 
@@ -338,5 +372,21 @@ const maRevealed = computed(() => snap.value.ma.tiles !== null)
 .nf-ma-hint { font-style: normal; color: #ffe6ad; }
 .nf-ma-name small { margin-left: 4px; font-size: 10px; color: #9fc0b3; font-weight: 400; }
 .nf-ma-total { color: #ffe6ad; }
+.nf-ma-close {
+  position: absolute; top: 4px; right: 4px;
+  width: 22px; height: 22px; padding: 0; border-radius: 6px; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.18); background: rgba(0, 0, 0, 0.2); color: #9fc0b3;
+  font-size: 14px; line-height: 1;
+  /* 卡片本身 pointer-events: none（不吃牌桌点击），关闭按钮要单独放开 */
+  pointer-events: auto;
+}
+.nf-ma-close:hover { color: #ffe6ad; border-color: rgba(255, 212, 121, 0.5); }
+.nf-ma-restore {
+  position: fixed; right: 16px; top: calc(var(--safe-top) + var(--topbar-height) + 10px); z-index: 45;
+  width: 30px; height: 30px; padding: 0; border-radius: 50%; cursor: pointer;
+  border: 1px solid rgba(255, 212, 121, 0.45); background: rgba(8, 24, 20, 0.86); color: #ffe6ad;
+  font-size: 12px; font-weight: 700;
+}
+.nf-ma-restore:hover { background: rgba(255, 212, 121, 0.2); }
 .nf-ma-detail li span:last-child { color: #ffe6ad; }
 </style>

@@ -2,7 +2,7 @@
 // 南丰麻将：复用旧版的页面骨架（`.game-app` + 顶栏 + `.lobby` 大厅），只把玩法换成南丰。
 // 顶栏的五个主题、声音设置、规则按钮都沿用旧组件；大厅与牌桌只是这里的两个状态。
 // `?players=4|5&ma=0|1|2|4` 直接开局（自动化/自测用），`&auto=1` 是四家 AI 演示。
-import { computed, defineAsyncComponent, ref } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
 import GameShellHeader from '../shell/GameShellHeader.vue'
 import LobbyDialog from '../lobby/LobbyDialog.vue'
 import { useAudio } from '../../game/core/presentation/useAudio'
@@ -71,6 +71,23 @@ const playing = computed(() => setup.value !== null || onlineGame.value !== null
 function changeTheme(theme: TableThemeName) {
   themeName.value = saveTableThemePreference(theme)
 }
+
+/** 浏览器全屏：大厅和牌桌都能用（手机上能挤掉地址栏，桌面等价于 F11）。 */
+const isFullscreen = ref(false)
+function syncFullscreen() {
+  isFullscreen.value = document.fullscreenElement !== null
+}
+async function toggleFullscreen() {
+  try {
+    if (document.fullscreenElement === null) await document.documentElement.requestFullscreen()
+    else await document.exitFullscreen()
+  } catch {
+    // 不支持的浏览器（iPhone Safari）静默忽略
+  }
+  syncFullscreen()
+}
+onMounted(() => document.addEventListener('fullscreenchange', syncFullscreen))
+onBeforeUnmount(() => document.removeEventListener('fullscreenchange', syncFullscreen))
 
 function start(next: NanfengLobbySetup) {
   setup.value = next
@@ -141,6 +158,11 @@ function backToLobby() {
       @return-lobby="backToLobby"
     />
 
+    <!-- 全屏：大厅与牌桌都能点（手机挤掉地址栏，桌面等价 F11） -->
+    <button class="nf-fs-toggle" type="button" :aria-pressed="isFullscreen" @click="toggleFullscreen">
+      {{ isFullscreen ? '退出全屏' : '全屏' }}
+    </button>
+
     <LobbyDialog
       v-if="rulesOpen"
       title="南丰麻将 · 规则要点"
@@ -162,6 +184,15 @@ function backToLobby() {
 </template>
 
 <style scoped>
+/* 全屏开关：左下角常驻，别和牌桌自己的「大厅」按钮抢位置 */
+.nf-fs-toggle {
+  position: fixed; left: 12px; bottom: 12px; z-index: 48;
+  padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 30%, transparent);
+  background: color-mix(in srgb, var(--theme-panel) 62%, transparent);
+  color: var(--theme-text-muted);
+}
+.nf-fs-toggle:hover { color: var(--theme-accent-text); border-color: var(--theme-accent); }
 .nf-rules { margin: 0; padding-left: 18px; display: grid; gap: 9px; font-size: 13px; line-height: 1.8; color: var(--theme-text-muted); }
 .nf-rules b { color: var(--theme-accent-text); font-weight: 600; }
 </style>
