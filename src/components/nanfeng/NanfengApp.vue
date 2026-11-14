@@ -8,6 +8,7 @@ import LobbyDialog from '../lobby/LobbyDialog.vue'
 import { useAudio } from '../../game/core/presentation/useAudio'
 import NanfengLobby from './NanfengLobby.vue'
 import type { NanfengLobbySetup } from './lobbySetup'
+import { useNanfengOnline } from './useNanfengOnline'
 import { MA_COUNT_CHOICES } from '../../game/nanfeng/score/ma'
 import type { TableThemeName } from '../table/three/tableTheme'
 import { themePresentationByName, themePresentationCssVariables } from '../../theme/themePresentation'
@@ -48,7 +49,6 @@ function setupFromUrl(): NanfengLobbySetup | null {
 const setup = ref<NanfengLobbySetup | null>(setupFromUrl())
 /** 上一次开局的配置：返回大厅时回填到大厅的选项里。 */
 const lastSetup = ref<NanfengLobbySetup | null>(setup.value)
-const playing = computed(() => setup.value !== null)
 const rulesOpen = ref(false)
 
 // 主题：URL > 上次的选择 > 墨玉（与旧大厅同一套偏好存储）。
@@ -56,6 +56,17 @@ const initialTheme = resolveInitialTableTheme(params.get('theme'), readTableThem
 const themeName = ref<TableThemeName>(initialTheme.theme)
 const themeStyle = computed(() => themePresentationCssVariables(themePresentationByName(themeName.value)))
 const headingClass = computed(() => themePresentationByName(themeName.value).typography.headingClass)
+
+// 联机：房间会话放在页面根组件，进桌（大厅卸载）时房间不能跟着被关掉。
+const onlinePlayers = ref<4 | 5>(5)
+const onlineMa = ref(2)
+const online = useNanfengOnline({
+  players: () => onlinePlayers.value,
+  maCount: () => onlineMa.value,
+  themeName: themeName.value,
+})
+const onlineGame = computed(() => online.game.value)
+const playing = computed(() => setup.value !== null || onlineGame.value !== null)
 
 function changeTheme(theme: TableThemeName) {
   themeName.value = saveTableThemePreference(theme)
@@ -66,8 +77,12 @@ function start(next: NanfengLobbySetup) {
   lastSetup.value = next
 }
 
-/** 牌桌里点「返回大厅」：本场作废（单机没有座位保留这回事）。 */
+/** 牌桌里点「返回大厅」：单机本场作废；联机则离开房间（房间由根组件持有）。 */
 function backToLobby() {
+  if (onlineGame.value !== null) {
+    void online.leave()
+    return
+  }
   setup.value = null
 }
 </script>
@@ -99,17 +114,30 @@ function backToLobby() {
       :theme-name="themeName"
       :players="lastSetup?.players"
       :ma="lastSetup?.ma"
+      :online="online"
+      :online-players="onlinePlayers"
+      :online-ma="onlineMa"
+      @update:online-players="onlinePlayers = $event === 4 ? 4 : 5"
+      @update:online-ma="onlineMa = $event"
       @start="start"
       @open-rules="rulesOpen = true"
     />
 
     <NanfengTable
-      v-else
+      v-else-if="setup"
       :theme-name="themeName"
       :auto-play="autoPlay"
       :seed="seed"
       :ma-count="setup?.ma ?? 0"
       :roster="setup?.players === 5 ? ROSTER : undefined"
+      @return-lobby="backToLobby"
+    />
+
+    <!-- 联机：房主/客机的 API 已经由 `useNanfengOnline` 建好，牌桌只负责画 -->
+    <NanfengTable
+      v-else
+      :theme-name="themeName"
+      :game="onlineGame ?? undefined"
       @return-lobby="backToLobby"
     />
 

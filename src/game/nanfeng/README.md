@@ -5,10 +5,23 @@
 根地址进的**就是南丰麻将大厅**：`components/nanfeng/NanfengApp.vue` 复用旧版的页面骨架
 （`.game-app` + `GameShellHeader` 顶栏的五个主题 / 声音 / 规则 + `.lobby` 布局），
 把玩法名与「场次/玩法」两行换成南丰的「人数 / 买码」（`NanfengLobby.vue`，4 人局买码强制关闭）。
-大厅保留「单机对战 / 联机对战」两个模式；联机入口已复原，但对接层与房间面板还没写完
-（服务端见 `docs/nanfeng-online-integration-plan.md`）。
+大厅保留「单机对战 / 联机对战」两个模式；联机入口已复原，房间面板与接线还在做。
 旧的莲花广麻大厅退到 `?game=lotus` 兜底，等删旧代码时一起移除。
 `?players=4|5&ma=0|1|2|4` 直接开局（自动化用），`?debug=1` 显示投影数值。
+
+## 联机（P2P，房主权威）
+
+房间/传输沿用旧的 VibeHub 那套（`src/game/online/vibe/*` + `transport/vibeRoomTransport.ts`），
+对局同步换成南丰自己的协议（旧的 `ServerSnapshot` 是旧引擎的形状，装不下「5 人换座」和「买码」）：
+
+| 文件 | 职责 |
+|---|---|
+| `net/protocol.ts` | 消息类型 + 白名单解码（版本不符/坏包一律丢弃） |
+| `net/seatSnapshot.ts` | **按座位脱敏**：只给目标座位自己的暗牌；轮空买码的观战者一手牌都没有；待决动作只发给轮到的人并剥掉 AI 视野；码牌局中不公开 |
+| `net/host.ts` | 房主：跑本地 `useNanfengMatch`，每次状态变化按 peer 广播；收到客机动作走 `applyRemote` 校验（非法丢弃，不停房主的对局）；`isRemoteSeat` 保证房主 AI **不替远端真人出牌** |
+| `net/guest.ts` | 客机：实现同一个 `NanfengMatchApi`（收快照→渲染、动作→发给房主），所以 `NanfengTable` 不区分单机/联机 |
+
+`NanfengTable` 通过 `game` prop 注入 API：单机不传就自己开一局，联机传房主/客机的实现。
 
 ## 来源与性质
 

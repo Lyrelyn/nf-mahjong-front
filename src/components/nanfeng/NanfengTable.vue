@@ -9,7 +9,7 @@ import { useAudio, useEffectPlayer } from '../../game/core/presentation/useAudio
 import { toCode } from '../../game/nanfeng/tileCodec'
 import { projectToTable, tileOfHandIndex } from '../../game/nanfeng/projectToTable'
 import { seatText, tileText } from '../../game/nanfeng/tileText'
-import { useNanfengMatch } from '../../game/nanfeng/useNanfengMatch'
+import { useNanfengMatch, type NanfengMatchApi } from '../../game/nanfeng/useNanfengMatch'
 import { fanText } from './fanText'
 import type { TableThemeName } from '../table/three/tableTheme'
 
@@ -21,6 +21,11 @@ const props = withDefaults(defineProps<{
   roster?: readonly string[]
   /** 牌桌主题（由大厅顶栏切换，五个主题都沿用旧表现）。 */
   themeName?: TableThemeName
+  /**
+   * 由外部提供的对局 API：联机时是房主/客机的实现，为 `undefined` 时自己开一局单机。
+   * 两边实现的是同一个 `NanfengMatchApi`，所以牌桌本身不区分单机与联机。
+   */
+  game?: NanfengMatchApi
 }>(), { themeName: 'jade' })
 
 /** 回大厅：本场作废（单机没有"座位保留"这回事，重进就是新的一场）。 */
@@ -33,13 +38,17 @@ const seed = props.seed ?? Date.now() % 100000
 const injectedPlayer = useEffectPlayer()
 const localAudio = injectedPlayer === null ? useAudio() : null
 const playEffect = injectedPlayer ?? localAudio?.playEffect ?? (() => {})
-const game = useNanfengMatch({
-  autoPlay: props.autoPlay,
-  seed,
-  maCount: props.maCount,
-  roster: props.roster,
-  playSound: playEffect,
-})
+// 联机时对局 API 由外部注入；只有单机才自己开一局。
+const localGame = props.game === undefined
+  ? useNanfengMatch({
+      autoPlay: props.autoPlay,
+      seed,
+      maCount: props.maCount,
+      roster: props.roster,
+      playSound: playEffect,
+    })
+  : null
+const game: NanfengMatchApi = props.game ?? localGame!
 const snap = game.snapshot
 
 const view = computed(() => projectToTable(snap.value))

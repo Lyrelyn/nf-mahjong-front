@@ -18,7 +18,7 @@ import { isMaCount } from './score/ma'
 import type { GameEvent } from './state/apply'
 import { aiActionFor } from './runtime/aiAction'
 import { NanfengMatch, type MatchStatus, type PendingDecision } from './runtime/match'
-import type { RoundOutcome } from './state/gameState'
+import type { GameState, RoundOutcome } from './state/gameState'
 import type { Phase } from './state/phase'
 import { createRng } from './prng'
 import { wallBreakIndexForDealer } from '../core/rules/wallLayout'
@@ -165,6 +165,26 @@ export interface NanfengMatchApi {
    * 也就是那个人的视角（他的手牌会显示在下方）。
    */
   setViewSeat: (seat: number) => void
+  /**
+   * 联机房主：替**某个远端座位**落一步。
+   *
+   * 校验和本地完全一致（座位必须是当前待决座位、动作必须在合法选项里）；
+   * 非法就返回错误、**不**写 `lastError`（远端手滑不该让房主的对局停下来）。
+   */
+  applyRemote: (action: PlayerAction) => { ok: true } | { ok: false; error: string }
+}
+
+/** 每次状态变化后交给联机层的"权威来源"。 */
+export interface RoundStateForNet {
+  state: GameState
+  status: MatchStatus
+  round: number
+  dealer: number
+  /** 本局轮空买码的人；`null` = 没有第 5 个人。 */
+  buyerId: string | null
+  dice: [number, number]
+  wallBreakIndex: number
+  pending: PendingDecision | null
 }
 
 export interface UseNanfengOptions {
@@ -188,6 +208,19 @@ export interface UseNanfengOptions {
   maCount?: number
   /** 音效播放入口（由 UI 层注入；本目录不碰音频）。 */
   playSound?: (name: string, volume?: number) => void
+  /**
+   * 联机房主用：每次状态变化后回调一次，拿到的是一份**权威来源**（不是快照）。
+   * 房主据此按座位脱敏后广播；本层不做任何网络。
+   */
+  onRoundState?: (source: RoundStateForNet) => void
+  /**
+   * 这个座位是不是**远端真人**（联机时由房主传进来）。
+   *
+   * 是的话本地 AI **不许替他落子** —— 否则房主的 AI 会和客机抢同一个座位，
+   * 客机还没点，牌就已经被打出去了。`personName` 是这一局坐这把椅子的人名
+   * （5 人换座每局都会换人，所以按人名而不是座位号判断）。
+   */
+  isRemoteSeat?: (seat: number, personName: string) => boolean
 }
 
 export function useNanfengMatch(options: UseNanfengOptions = {}): NanfengMatchApi {
@@ -247,47 +280,9 @@ export function useNanfengMatch(options: UseNanfengOptions = {}): NanfengMatchAp
     return match.state.seats.indexOf(humanName)
   }
 
-  const snapshot = shallowRef<NanfengSnapshot>(emptySnapshot(humanSeatValue, seats.length, seats))
-
-  function emptySnapshot(human: number, seatCount: number, names: readonly string[]): NanfengSnapshot {
-    return {
-      round: 1,
-      dealer: 0,
-      wallCount: 0,
-      phase: 'LOBBY',
-      turn: 0,
-      status: 'playing',
-      scores: new Array(seatCount).fill(0),
-      seats: Array.from({ length: seatCount }, () => ({ count: 0, melds: [] })),
-      own: { tiles: [], drawn: null, melds: [] },
-      discards: Array.from({ length: seatCount }, () => []),
-      lastDiscard: null,
-      pending: null,
-      outcome: null,
-      settle: null,
-      ma: {
-        count: 0,
-        tiles: null,
-        detail: [],
-        delta: 0,
-        score: 0,
-        buyerName: roster?.[4] ?? '',
-        isHumanBuyer: false,
-      },
-      seatNames: [...names],
-      viewSeat: Math.max(0, human),
-      opening: null,
-      dealAnimation: { playerIndex: -1, count: 0, serial: 0 },
-      dealtCount: 0,
-      dice: [1, 1],
-      wallBreakIndex: 0,
-      wallHeadDrawn: 0,
-      tableActionEvent: null,
-      events: [],
-      lastError: null,
-      humanSeat: human,
-    }
-  }
+  const snapshot = shallowRef<NanfengSnapshot>(
+    createEmptyNanfengSnapshot(seats, roster?.[4] ?? '', humanSeatValue),
+  )
 
   function dealtCountOf(): number | null {
     if (openingValue === null) return null
@@ -365,6 +360,17 @@ export function useNanfengMatch(options: UseNanfengOptions = {}): NanfengMatchAp
       events: match.events,
       humanSeat: humanSeatValue,
     }
+    // 联机房主：把"权威来源"交出去，由上层按座位脱敏后广播（本层不做网络）。
+    options.onRoundState?.({
+      state,
+      status: match.status,
+      round: match.round,
+      dealer: match.dealer,
+      buyerId: match.buyerId,
+      dice: [...diceValue] as [number, number],
+      wallBreakIndex: wallBreakValue,
+      pending: match.pending,
+    })
   }
 
   function clearTimer(): void {
@@ -395,12 +401,21 @@ export function useNanfengMatch(options: UseNanfengOptions = {}): NanfengMatchAp
   }
 
   /** 若下一个待决点是 AI，就延迟后自动落子；是真人或本局结束就停下等 UI。 */
+  /** 联机：这个座位上是不是远端真人（是的话本地 AI 不能替他落子）。 */
+  function isRemoteSeat(seat: number): boolean {
+    const check = options.isRemoteSeat
+    if (check === undefined || !match.started) return false
+    const person = match.state.seats[seat]
+    return person !== undefined && check(seat, person)
+  }
+
   function scheduleAi(): void {
     clearTimer()
     if (disposed) return
     const pending = match.pending
     if (match.status !== 'playing' || pending === null) return
     if (pending.seat === humanSeatValue) return
+    if (isRemoteSeat(pending.seat)) return
     if (openingValue !== null) return // 开局演出期间不推进
     const delay = pending.kind === 'turn' ? AI_THINK_MS.turn : AI_THINK_MS.claim
     aiTimer = setTimeout(() => {
@@ -408,6 +423,7 @@ export function useNanfengMatch(options: UseNanfengOptions = {}): NanfengMatchAp
       if (disposed) return
       const current = match.pending
       if (match.status !== 'playing' || current === null || current.seat === humanSeatValue) return
+      if (isRemoteSeat(current.seat)) return
       applySafe(aiActionFor(current, cfg, ++seq))
     }, delay)
   }
@@ -622,6 +638,23 @@ export function useNanfengMatch(options: UseNanfengOptions = {}): NanfengMatchAp
       viewSeatValue = seat
       refresh()
     },
+    applyRemote(action: PlayerAction) {
+      if (openingValue !== null) return { ok: false, error: '还在开局演出，稍后重试' }
+      const pending = match.pending
+      if (pending === null) return { ok: false, error: '当前没有待决动作' }
+      if (pending.seat !== action.seat) return { ok: false, error: '不是这个座位的回合' }
+      try {
+        const events = match.act(action)
+        lastErrorValue = null
+        publishPresentation(events)
+        refresh()
+        scheduleAi()
+        return { ok: true }
+      } catch (error) {
+        // 远端手滑不该把房主这一局停掉：只回一条错误，不写 lastError、不清定时器。
+        return { ok: false, error: error instanceof Error ? error.message : String(error) }
+      }
+    },
   }
 
   refresh()
@@ -633,6 +666,44 @@ export function useNanfengMatch(options: UseNanfengOptions = {}): NanfengMatchAp
   })
 
   return api
+}
+
+/** 空快照：大厅阶段、或联机客机收到第一帧之前用它顶住界面。 */
+export function createEmptyNanfengSnapshot(
+  seatNames: readonly string[],
+  buyerName = '',
+  humanSeat = 0,
+): NanfengSnapshot {
+  const seatCount = Math.max(1, seatNames.length)
+  return {
+    round: 1,
+    dealer: 0,
+    wallCount: 0,
+    phase: 'LOBBY',
+    turn: 0,
+    status: 'playing',
+    scores: new Array(seatCount).fill(0),
+    seats: Array.from({ length: seatCount }, () => ({ count: 0, melds: [] })),
+    own: { tiles: [], drawn: null, melds: [] },
+    discards: Array.from({ length: seatCount }, () => []),
+    lastDiscard: null,
+    pending: null,
+    outcome: null,
+    settle: null,
+    ma: { count: 0, tiles: null, detail: [], delta: 0, score: 0, buyerName, isHumanBuyer: false },
+    seatNames: [...seatNames],
+    viewSeat: Math.max(0, humanSeat),
+    opening: null,
+    dealAnimation: { playerIndex: -1, count: 0, serial: 0 },
+    dealtCount: 0,
+    dice: [1, 1],
+    wallBreakIndex: 0,
+    wallHeadDrawn: 0,
+    tableActionEvent: null,
+    events: [],
+    lastError: null,
+    humanSeat,
+  }
 }
 
 function tilesOf(counts: Uint8Array): Tile[] {
