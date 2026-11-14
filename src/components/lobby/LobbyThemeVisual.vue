@@ -4,10 +4,20 @@ import { animeCharacterAvatarUrl } from '../../game/llm/animeCharacterPreference
 import { resolveAnimeCharacter, type CharacterId } from '../../game/llm/animeCharacters'
 import { tableThemeIdentity, type TableThemeName } from '../../theme/themeIdentity'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   themeName: TableThemeName
   characterId: CharacterId
-}>()
+  /** 品牌文案：默认是旧玩法的，南丰大厅会覆盖；这样两套玩法共用同一个画面组件。 */
+  brandEyebrow?: string
+  brandTitle?: string
+  brandTitleAccent?: string
+  brandSubtitle?: string
+}>(), {
+  brandEyebrow: 'LIANHUA MAHJONG COLLECTIONS',
+  brandTitle: '莲花',
+  brandTitleAccent: '广麻',
+  brandSubtitle: '一款莲花县特有的地方麻将游戏玩法',
+})
 
 defineEmits<{ selectCharacter: [] }>()
 
@@ -36,9 +46,9 @@ function markImageFailed() {
 <template>
   <section class="lobby-visual" :data-visual-theme="themeName" aria-label="当前主题预览">
     <div class="lobby-brand">
-      <p class="eyebrow">LIANHUA MAHJONG COLLECTIONS</p>
-      <h1>莲花<span>广麻</span></h1>
-      <p class="subtitle">一款莲花县特有的地方麻将游戏玩法</p>
+      <p class="eyebrow">{{ brandEyebrow }}</p>
+      <h1>{{ brandTitle }}<span>{{ brandTitleAccent }}</span></h1>
+      <p class="subtitle">{{ brandSubtitle }}</p>
     </div>
 
     <div

@@ -5,28 +5,34 @@
 // 规则判定、合法动作集合都由运行时提供；这里不判断任何牌型。
 import { computed, onMounted } from 'vue'
 import GameTableHud from '../table/GameTableHud.vue'
-import { useAudio } from '../../game/core/presentation/useAudio'
+import { useAudio, useEffectPlayer } from '../../game/core/presentation/useAudio'
 import { toCode } from '../../game/nanfeng/tileCodec'
 import { projectToTable, tileOfHandIndex } from '../../game/nanfeng/projectToTable'
 import { seatText, tileText } from '../../game/nanfeng/tileText'
 import { useNanfengMatch } from '../../game/nanfeng/useNanfengMatch'
 import { fanText } from './fanText'
+import type { TableThemeName } from '../table/three/tableTheme'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   autoPlay?: boolean
   seed?: number
   maCount?: number
   /** 5 人轮换的花名册（5 个名字，第一个是你）；不给就是固定 4 人局。 */
   roster?: readonly string[]
-}>()
+  /** 牌桌主题（由大厅顶栏切换，五个主题都沿用旧表现）。 */
+  themeName?: TableThemeName
+}>(), { themeName: 'jade' })
 
 /** 回大厅：本场作废（单机没有"座位保留"这回事，重进就是新的一场）。 */
 const emit = defineEmits<{ returnLobby: [] }>()
 
 // 洗牌的熵放在 UI 层：`src/game/nanfeng/**` 是纯净层，不许取时钟。
 const seed = props.seed ?? Date.now() % 100000
-// 音效从 UI 层注入：组合式目录不碰音频模块（纯净层约束）。
-const { playEffect } = useAudio()
+// 音频层由 NanfengApp（页面根）建立 —— 顶栏的声音开关要用它。这里只取它提供的播放器；
+// 万一牌桌被单独挂载（没有上层音频层）才自己建一套，否则会出现两层 BGM。
+const injectedPlayer = useEffectPlayer()
+const localAudio = injectedPlayer === null ? useAudio() : null
+const playEffect = injectedPlayer ?? localAudio?.playEffect ?? (() => {})
 const game = useNanfengMatch({
   autoPlay: props.autoPlay,
   seed,
@@ -123,11 +129,11 @@ const maRevealed = computed(() => snap.value.ma.tiles !== null)
 </script>
 
 <template>
-  <main class="game-app nf-hud" data-table-theme="jade">
+  <div class="nf-hud">
     <div class="has-three-scene">
       <GameTableHud
         v-bind="view"
-        theme-name="jade"
+        :theme-name="themeName"
         :seats-selectable="snap.humanSeat < 0"
         @discard="onDiscard"
         @gang="onGang"
@@ -215,19 +221,19 @@ const maRevealed = computed(() => snap.value.ma.tiles !== null)
 
     <!-- 对局中也能回大厅（本场作废，单机没有座位保留这回事）。 -->
     <button class="nf-lobby-link" type="button" @click="emit('returnLobby')">← 大厅</button>
-  </main>
+  </div>
 </template>
 
 <style scoped>
-.nf-hud { position: relative; min-height: 100vh; }
+.nf-hud { position: absolute; inset: 0; }
 .nf-error {
-  position: fixed; left: 50%; top: 16px; transform: translateX(-50%); z-index: 70;
+  position: fixed; left: 50%; top: calc(var(--safe-top) + var(--topbar-height) + 10px); transform: translateX(-50%); z-index: 70;
   display: flex; gap: 12px; align-items: center; max-width: calc(100vw - 32px);
   padding: 10px 14px; border-radius: 10px; font-size: 13px;
   background: rgba(120, 24, 24, 0.94); border: 1px solid rgba(255, 160, 160, 0.6); color: #ffe8e8;
 }
 .nf-debug {
-  position: fixed; left: 8px; top: 8px; z-index: 60; max-width: calc(100vw - 16px);
+  position: fixed; left: 8px; top: calc(var(--safe-top) + var(--topbar-height) + 8px); z-index: 60; max-width: calc(100vw - 16px);
   font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; color: #d9f2e6;
   background: rgba(0, 0, 0, 0.72); border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 6px; padding: 6px 8px; pointer-events: none; white-space: normal;
@@ -262,7 +268,8 @@ const maRevealed = computed(() => snap.value.ma.tiles !== null)
 .nf-lobby-link:hover { color: #ffe6ad; border-color: rgba(255, 212, 121, 0.5); }
 /* 买码席（第 5 个参与者）：浮在右上角，不动 HUD 的 4 座布局 */
 .nf-ma {
-  position: fixed; right: 16px; top: 16px; z-index: 45;
+  /* 顶栏（主题/声音/规则）占了顶部一条，买码席让开它 */
+  position: fixed; right: 16px; top: calc(var(--safe-top) + var(--topbar-height) + 10px); z-index: 45;
   /* 纯展示：不吃点击，避免挡住牌桌/HUD 上的按钮 */
   pointer-events: none;
   width: min(216px, calc(100vw - 32px)); padding: 10px 12px; border-radius: 10px;

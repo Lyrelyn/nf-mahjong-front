@@ -2,7 +2,11 @@
 
 ## 入口
 
-根地址进的**就是南丰麻将大厅**（`components/nanfeng/NanfengApp.vue`：选人数 + 买码张数 → 进桌）。
+根地址进的**就是南丰麻将大厅**：`components/nanfeng/NanfengApp.vue` 复用旧版的页面骨架
+（`.game-app` + `GameShellHeader` 顶栏的五个主题 / 声音 / 规则 + `.lobby` 布局），
+把玩法名与「场次/玩法」两行换成南丰的「人数 / 买码」（`NanfengLobby.vue`，4 人局买码强制关闭）。
+大厅保留「单机对战 / 联机对战」两个模式；联机入口已复原，但对接层与房间面板还没写完
+（服务端见 `docs/nanfeng-online-integration-plan.md`）。
 旧的莲花广麻大厅退到 `?game=lotus` 兜底，等删旧代码时一起移除。
 `?players=4|5&ma=0|1|2|4` 直接开局（自动化用），`?debug=1` 显示投影数值。
 
