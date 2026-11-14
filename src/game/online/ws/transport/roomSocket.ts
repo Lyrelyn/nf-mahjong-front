@@ -79,7 +79,9 @@ export function createRoomSocketTransport({
     pingTimer = globalThis.setInterval(() => {
       if (socket?.readyState !== OPEN) return
       lastPingAt = Date.now()
-      socket.send(JSON.stringify({ type: 'ping', t: lastPingAt }))
+      // 后端只认 `{kind:'ping'}`（实测：发 `{type:'ping'}` 会回 `error ROOM_NOT_PLAYING`，
+      // 而且永不回 pong → 重连后的信号强度恒为 1 级）。
+      socket.send(JSON.stringify({ kind: 'ping' }))
     }, pingInterval) as unknown as number
   }
 

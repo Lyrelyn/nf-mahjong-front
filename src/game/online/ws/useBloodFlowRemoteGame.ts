@@ -276,7 +276,8 @@ export function useBloodFlowRemoteGame(options: BloodFlowRemoteGameOptions) {
     if (!roomId.value) return
     sessionError.value = ''
     try {
-      await startRoom(roomId.value, llmSeats)
+      // 后端 /start 从 body 读 playerId 认房主身份，漏了就是 403 NOT_CREATOR。
+      await startRoom(roomId.value, llmSeats, playerId.value)
       sessionStatus.value = 'lobby'
       socket.open()
     } catch (error) {

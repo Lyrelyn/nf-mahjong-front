@@ -7,7 +7,7 @@
 //   - 这里只做胶水：把 SDK 的 room 接到 `sendChunked` / `unwrapChunk`。
 import { effectScope, onScopeDispose, ref, shallowRef, type Ref } from 'vue'
 import { createVibeRoomSession } from '../../game/online/vibe/vibeRoomSession'
-import { canInitVibeHub, initVibeHub } from '../../game/online/vibe/vibeClient'
+import { getVibeClient, initVibeHub } from '../../game/online/vibe/vibeClient'
 import { sendChunked, unwrapChunk } from '../../game/online/transport/vibeRoomTransport'
 import type { LobbySeat } from '../../game/online/vibe/vibeLobby'
 import type { PublicAiSeat } from '../../game/online/vibe/vibeLlm'
@@ -205,11 +205,15 @@ export function useNanfengOnline(options: NanfengOnlineOptions): NanfengOnline {
    * 部署在平台域才是真 SDK（需要登录）。
    */
   async function ensureClient(): Promise<boolean> {
-    if (!canInitVibeHub) {
-      error.value = '当前环境不能联机：本地请用 npm run dev（mock 房间），线上需部署在 VibeHub 平台'
+    // 不再用 `canInitVibeHub` 提前拦：那个判断只认"平台域 / dev / localhost"，
+    // 部署在普通静态站（cloudpage 之类）会被它直接否掉，连试都不试。
+    // 现在一律先初始化，再按结果给具体原因。
+    await initVibeHub()
+    if (getVibeClient() === null) {
+      error.value = '联机要用 VibeHub SDK：本地 `npm run dev`（mock 房间），线上请部署到 VibeHub 平台并登录。'
+        + ' 自己接后端（WS 房间）是下一步。'
       return false
     }
-    await initVibeHub()
     return true
   }
 

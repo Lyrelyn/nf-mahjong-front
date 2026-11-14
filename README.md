@@ -1,18 +1,35 @@
-# 莲花广麻
+# 南丰麻将
 
-[![GitHub Stars](https://img.shields.io/github/stars/BestGuo2020/lianhuaguangdongmahjong?style=flat&logo=github)](https://github.com/BestGuo2020/lianhuaguangdongmahjong/stargazers)
-[![License](https://img.shields.io/github/license/BestGuo2020/lianhuaguangdongmahjong)](./LICENSE)
 ![Node.js](https://img.shields.io/badge/Node.js-%5E20.19.0%20%7C%7C%20%3E%3D22.12.0-339933?logo=nodedotjs&logoColor=white)
 ![npm](https://img.shields.io/badge/npm-%3E%3D9.0.0-CB3837?logo=npm&logoColor=white)
 ![Vue](https://img.shields.io/badge/Vue-3.5-42b883?logo=vuedotjs&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-8-646cff?logo=vite&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6?logo=typescript&logoColor=white)
 
-一款使用 Vue 3 和 Three.js 实现的四人麻将游戏，视觉风格参考传统 PC 麻将房。支持**单机对战**（本家与三名本地 AI 对局）和**联机对战**（创建房间或输入 6 位房间码加入，与真实玩家同场），两种模式均可选择东风场或半庄场。
+浏览器里的**南丰麻将**（江西南丰地方玩法）：Vue 3 + Three.js 牌桌，136 张、有字牌无花牌。
 
-> 玩法按作者第一次接触的莲花广麻规则实现，部分计分细节可能与其他地区或牌馆的规则存在差异。实际行为以本项目代码和游戏内“玩法”面板为准。
+- **单机对战**：本机 4 个座位，1 个真人 + 3 个 AI；可选 **4 人局** 或 **5 人轮换**（4 人打 + 1 人轮空买码，每局按 R-02 换人）。
+- **联机对战**：房主权威的 P2P 房间（VibeHub SDK），6 位房间号加入；人数不够由 AI 补位，空位可由房主设成人机并改名。**联机依赖 VibeHub 登录**，普通静态站（如 cloudpage）只能单机。
+- **买码**：5 人局可选 0/1/2/4 张码牌 —— 开局从牌墙末尾留出、谁都不摸、局末才翻开，按点数指向庄家/下家/对家/上家，买码的人跟着那一家收付（多张叠加也能互相抵消）。
 
-血流玩法的规则、实施进度和验收资料统一从 [血流文档入口](docs/blood-flow/README.md) 查阅。
+规则要点：假胡、归一（杠也算）、十三烂/七星、碰碰胡单调；自摸不翻倍（三家各付）、点炮只由放炮者付、一炮多响都算；手牌封顶 8 炮，**只有杠分能突破**（直杠 2 / 补杠 1 / 暗杠 2，开杠即入账）；荒庄庄家赔三家各 1 分。
+
+> 规则权威是项目的确认文档（`nf-mahjong/docs/rules-confirmed.md`），本仓库的实现与偏差记录在
+> [`src/game/nanfeng/RULES-COVERAGE.md`](src/game/nanfeng/RULES-COVERAGE.md)，引擎与 AI 的说明在
+> [`src/game/nanfeng/README.md`](src/game/nanfeng/README.md)。实际行为以代码与游戏内「游戏规则」为准。
+
+**入口**：根地址就是南丰大厅（选人数/买码 → 进桌）；旧的莲花广麻大厅保留在 `?game=lotus`，等删旧代码时一起移除。
+调试参数：`?players=4|5&ma=0|1|2|4` 直接开局、`?debug=1` 显示投影数值。
+
+## 命令
+
+```bash
+npm install      # 用 pnpm 也可以；仓库里没有 package-lock.json，npm ci 会直接报 EUSAGE
+npm run dev      # http://localhost:5173
+npm run typecheck
+npm test         # vitest，只跑 src/game/nanfeng
+npm run test:all # vitest，跑 src 下的全部（含旧玩法）
+```
 
 ## 声明
 

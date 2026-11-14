@@ -291,7 +291,8 @@ export function createRemoteRoomLifecycle({
   async function startMatch(llmSeats?: Array<LlmSeatRequest>) {
     if (!state.roomId.value) return
     try {
-      await api.startRoom(state.roomId.value, llmSeats)
+      // 后端的 /start 只从 body 里读 playerId 认房主身份；漏了就是 403 NOT_CREATOR。
+      await api.startRoom(state.roomId.value, llmSeats, state.playerId.value)
     } catch (error) {
       state.sessionError.value = readableError(error, '开局失败')
       throw error

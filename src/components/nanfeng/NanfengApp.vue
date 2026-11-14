@@ -8,7 +8,8 @@ import LobbyDialog from '../lobby/LobbyDialog.vue'
 import { useAudio } from '../../game/core/presentation/useAudio'
 import NanfengLobby from './NanfengLobby.vue'
 import type { NanfengLobbySetup } from './lobbySetup'
-import { useNanfengOnline } from './useNanfengOnline'
+import { useNanfengOnline, type NanfengOnline } from './useNanfengOnline'
+import { useNanfengWsOnline } from './useNanfengWsOnline'
 import { MA_COUNT_CHOICES } from '../../game/nanfeng/score/ma'
 import type { TableThemeName } from '../table/three/tableTheme'
 import { themePresentationByName, themePresentationCssVariables } from '../../theme/themePresentation'
@@ -60,11 +61,24 @@ const headingClass = computed(() => themePresentationByName(themeName.value).typ
 // 联机：房间会话放在页面根组件，进桌（大厅卸载）时房间不能跟着被关掉。
 const onlinePlayers = ref<4 | 5>(5)
 const onlineMa = ref(2)
-const online = useNanfengOnline({
-  players: () => onlinePlayers.value,
-  maCount: () => onlineMa.value,
-  themeName: themeName.value,
-})
+/**
+ * 联机后端二选一：
+ *   - `VITE_ONLINE_BACKEND=ws` → 自己的 FastAPI + WS（`nf-mahjong-backend`，权威在服务端）；
+ *   - 其他（默认）→ 旧 VibeHub P2P（房主权威，需要平台登录）。
+ * 两条路的房间面板长一样，所以这里收敛成同一个形状给大厅用。
+ */
+const useWsBackend = import.meta.env.VITE_ONLINE_BACKEND === 'ws'
+const online = (useWsBackend
+  ? useNanfengWsOnline({
+      baseUrl: import.meta.env.VITE_NANFENG_WS_BASE,
+      players: () => onlinePlayers.value,
+      maCount: () => onlineMa.value,
+    })
+  : useNanfengOnline({
+      players: () => onlinePlayers.value,
+      maCount: () => onlineMa.value,
+      themeName: themeName.value,
+    })) as unknown as NanfengOnline
 const onlineGame = computed(() => online.game.value)
 const playing = computed(() => setup.value !== null || onlineGame.value !== null)
 

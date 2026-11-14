@@ -150,10 +150,24 @@ export function readyRoom(
   })
 }
 
-export function startRoom(roomId: string, llmSeats?: Array<LlmSeatRequest>): Promise<StartResult> {
+/**
+ * 开局。
+ *
+ * 后端 `/start` 不声明 body 模型，只从请求体里读 `playerId` 认身份（实测：
+ * 空 body → 403 `NOT_CREATOR`；带上房主的 `playerId` → 200）。其余接口的
+ * body 里本来就带 `playerId`，只有这个接口需要显式传。
+ */
+export function startRoom(
+  roomId: string,
+  llmSeats?: Array<LlmSeatRequest>,
+  playerId?: string,
+): Promise<StartResult> {
+  const body: Record<string, unknown> = {}
+  if (playerId) body.playerId = playerId
+  if (llmSeats && llmSeats.length) body.llmSeats = llmSeats
   return request<StartResult>(`/api/rooms/${encodeURIComponent(roomId)}/start`, {
     method: 'POST',
-    body: JSON.stringify(llmSeats && llmSeats.length ? { llmSeats } : {}),
+    body: JSON.stringify(body),
   })
 }
 

@@ -86,14 +86,44 @@ export interface NanfengMatchApi {
 
 **可以借鉴思路但建议重写**：`session/remoteRoomLifecycle.ts`（404 行）。它把"建房→加入→准备→开局→离开→恢复"的时序做全了，但里面掺着 `updateCharacter` / `reserveLlmSeat` / `llm*` / 默认 `'lotus-classic'`，且绑在 `remoteGameState` 的 ref 上。南丰版约 120 行就够。
 
-## 5. 后端要配合的两处小改（我来改，各 3 行）
+## 5. 后端**零改动**；但前端有两处必须做（2026-11 实测更新）
 
-1. **`POST /api/rooms/{id}/start` 接受可选的 `playerId` 请求体**。
-   现在 `start` 没有 body，`WAKUDEMO_LOGIN_BYPASS=true` 本地联调时 bypass 身份是固定的
-   `dev-bypass`，与房主不一致 → 前端一点"开局"就 `403 NOT_CREATOR`。
-   （冒烟脚本里我已经是靠在 start body 里塞 `playerId` 绕过的，正式接口应该支持。）
-2. **WS 心跳兼容 `{type:'ping'}`**：前端现网约定是 `{type:'ping',t}`，后端认 `{kind:'ping'}`。
-   两个都收最省事（也方便以后接别的客户端）。
+后端自带开发旁路：`.env` 里 `WAKUDEMO_LOGIN_BYPASS=true` 时，`app/api/deps.py` 的
+`require_wakudemo_login` 会把**请求体里的 `playerId`** 当身份（缺省 `dev-bypass`），
+身份键是 `wakudemo-<playerId>`。已实测通过，所以后端不需要改任何代码 —— 但前端必须做这两处：
+
+### 5.1 `POST /api/rooms/{id}/start` 必须带房主的 `playerId`
+
+后端 `/start` 不声明 body 模型，它按请求体里的 `playerId` 认身份。实测三例：
+
+| 请求体 | 结果 |
+|---|---|
+| `{}` | **403 `NOT_CREATOR`**（身份退化成 `dev-bypass`，与房主不一致） |
+| `{"playerId":"<房主>"}` | 200，`status=playing`、`phase=WAITING_PLAY`、`matchId` 已建 |
+| `{"playerId":"<非房主>"}` | 403 `NOT_CREATOR`（反证身份确实按 `playerId` 解析） |
+
+→ `roomApi.ts:153 startRoom(roomId, llmSeats)` 现在发 `{}` 或 `{llmSeats}`，
+南丰版必须发 `{ playerId }`。**这是接入时最容易卡住的一条**（其余接口的 body 里本来就带 `playerId`）。
+
+### 5.2 WS 心跳必须发 `{ kind: 'ping' }`
+
+实测（真实 WS 连接）：
+
+| 发送 | 收到 |
+|---|---|
+| `{"kind":"ping"}` | `{"kind":"pong"}` ✅ |
+| `{"type":"ping","t":1}` | `{"kind":"error","code":"ROOM_NOT_PLAYING"}` ❌ 无 pong |
+
+→ `roomSocket.ts:82 startPing()` 现在发 `{type:'ping',t}`，要改成 `{kind:'ping'}`。
+不改的后果：每 5 秒一条 error 日志；`postReconnectPongs` 永不递增 →
+重连后 `signalQuality` 恒为 1（信号栏永久降级）。
+
+### 5.3 联调注意
+
+- 5 个窗口要 **5 个不同 `playerId`**（同一身份只能在一个房间 → `ALREADY_IN_ROOM`）。
+- `ROOM_MAX` 默认 4，几轮测试就满（**对局中的房间不会被 TTL 回收**，只能重启服务或打完）
+  → 联调时把 `.env` 的 `ROOM_MAX` 调大。
+- `/docs` 默认关闭，要用得在 `.env` 里设 `DOCS_SHOW=True`。
 
 ## 6. 联调怎么跑（路径已经通了大半）
 
@@ -158,4 +188,184 @@ export interface NanfengMatchApi {
 | `transport/roomSocket.ts` | 与协议无关（URL + 重连 + 心跳 + 卡顿检测），只改心跳载荷 |
 | `orchestration/snapshotReconciler.ts` 的**三分支缓冲**（结算中挂起 / 开局中挂起 / 直接应用） | 南丰结算后也会"立刻开下一局"，同样存在"结算动画期间来了新快照"的问题；这套缓冲思路值得照搬（字段落地层全换） |
 | `presentation/settlementTimeline.ts` | 纯表现时序（胡牌动画→亮牌→结算面板 + 音效），与协议无关，只需要换入参 |
+
+---
+
+## 10. `nf-mahjong-backend` 的真实协议（从源码抄的，2026-11）
+
+> 上面 §7 引用的是**旧 Cocos 客户端 + 房主权威 P2P** 的 `JOIN_REQ/SNAPSHOT/seq` 协议，
+> **不是这个 FastAPI 后端在跑的协议**。下面这张表才是联调要对着写的东西，
+> 出处：`app/api/rooms.py`、`app/ws/game_ws.py`、`app/game/nanfeng_room.py`。
+
+### 10.1 REST（`app/api/rooms.py`）
+
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| POST | `/api/rooms` | 建房（返回 roomId 等） |
+| GET | `/api/rooms/meta` | 房间元数据 |
+| GET | `/api/rooms/{room_id}` | 房间状态 |
+| POST | `/api/rooms/{room_id}/join` | 加入（签发 `rejoin_code`） |
+| POST | `/api/rooms/{room_id}/leave` | 离开 |
+| POST | `/api/rooms/{room_id}/ready` | 准备 |
+| POST | `/api/rooms/{room_id}/start` | 开局（房主） |
+| DELETE | `/api/rooms/{room_id}` | 关房 |
+
+> 请求/响应字段还没抄（`rooms.py` 135-263 的 pydantic 模型），下一轮补。
+
+### 10.2 WS（`/ws/room/{room_id}?rejoin_code=<code>`）
+
+连接即鉴权：`rejoin_code` 由 REST join 签发，**必须带上**，否则直接拒。
+
+**握手失败**（发完即关）：
+
+```json
+{ "kind": "rejoin_err", "code": "ROOM_NOT_FOUND | REJOIN_CODE_REQUIRED | REJOIN_RATE_LIMITED | …" }
+```
+
+**握手成功**：先发一条身份帧，再发一份**该连接位的完整快照**：
+
+```json
+{ "kind": "rejoin_ok", "seat": 2, "rejoin": true, "roomId": "ABC123",
+  "rulesetId": "…", "matchLength": 4, "matchId": "…",
+  "nickname": "你", "avatar": "", "rejoinCode": "…", "slots": 5 }
+```
+
+**下行 `kind`（已确认）**
+
+| kind | 载荷要点 |
+|---|---|
+| `state_snapshot` | 该连接位有权看到的全量视图（字段见 `snapshot_for()` 476-517，待抄） |
+| `draw` | `{tile, seat}` —— **私有**，只发摸牌者 |
+| `discard_bc` | `{seat, tile}` 公开 |
+| `meld_bc` | `{seat, meld}` 公开 |
+| `hu_result` | 胡牌结果（公开） |
+| `settle` | `{deltas, …}` 结算（公开；含买码位） |
+| `huang_zhuang` | 荒庄（公开） |
+| `seating_changed` | 换座（5 人轮换，公开） |
+| `match_finished` | 全场结束，可能带 `forced: true` |
+| `pong` | 心跳应答 |
+| `error` | `{code}` —— 某条请求失败（**不是**被踢） |
+
+**上行**：客户端只发意图，服务端校验后广播。具体 `kind` 清单在
+`nanfeng_room.py` 的 `handle_client_message(slot, message)`（337 行起），下一轮抄进来。
+
+### 10.3 与前端现有实现的对接方式
+
+- **权威方变成服务端**：我们自己的 `useNanfengHost`（房主权威）在这条路上**不用**——
+  服务端已经权威了；前端只需要 `useNanfengGuest` 那种"收快照→渲染、动作→发出去"的实现。
+- 因此前端要写的只有一个 `wsNanfengClient`：REST 建房/加入/准备/开始 + WS 收帧/发意图，
+  然后把 `NanfengOnlinePanel` 的数据源从 VibeHub session 换成它。
+- 掉线自动代打是**服务端**做的（`_auto_play_after`），所以不用搬旧的"AI 夺舍"逻辑。
+- 重连：带上 `rejoin_code` 重新握手，服务端会补 `state_snapshot`（`RESYNC_REQ` 这类不需要）。
+
+### 10.4 上行只有两种包（`handle_client_message`，337 行）
+
+```jsonc
+{ "kind": "ping" }                                        // → {kind:'pong'}
+{ "kind": "action", "type": "DISCARD", "tile": 21, "reqId": 7 }
+// kind 也可以写 "act"；type 就是引擎的 ActionType：
+// DISCARD / PENG / MING_GANG / BU_GANG / AN_GANG / HU / PASS
+// 出牌为 null、PASS 为 null
+```
+
+**准备、开局、加入、离开都是 REST，不走 WS。** 失败回 `{kind:'error', code}`：
+`UNKNOWN_MESSAGE` / `ROOM_NOT_PLAYING` / `SITTING_OUT` / `SEAT_RELEASED` / 引擎校验错误。
+
+### 10.5 快照字段（`snapshot_for` + `project_view`，全部已抄）
+
+房间层：
+
+| 字段 | 含义 |
+|---|---|
+| `roomId` `rulesetId` `matchLength` `matchFinished` | 房间信息 |
+| `maCount` | 本局买几张码牌（公开；牌面只在结算后出现） |
+| `seating.table` | 4 个打牌位 → slot（`null` = 空位） |
+| `seating.sittingOut` | 本局轮空买码的 slot |
+| `slots[]` | `{slot, nickname, avatar, ready, connected}`，`null` = 空位 |
+| `totalScores` | `{slot: 累计分}`（按人，不按椅子） |
+
+引擎投影（`project_view`）：
+
+| 字段 | 含义 / 前端映射 |
+|---|---|
+| `seq` | 单调序号，`<= lastAppliedSeq` 直接丢 |
+| `round` `phase` `dealer` `turn` `wallLeft` | 直接映射 |
+| `scores` | 4 个**打牌座位**的累计分（服务端已按人重算） |
+| `roundGangScore` | 本局杠分台账 |
+| `discards` | 4 条牌河 |
+| `melds[]` | 4 家的副露 `{kind, tile, fromSeat}` |
+| `handSizes[]` | 结构张数（副露算 3 位） |
+| `lastDiscard` | `{seat, tile}` |
+| `claim` | `{triggerSeat, triggerTile, gangSeat, pending[], deadlineAt, options[]}`；**只有轮到你自己响应时 `options` 才非空** |
+| `maCount` `maScore` | 买码张数 / 买码位累计分 |
+| `lastSettle` | `{deltas, detail[], maDelta, maDetail[]}`（与前端 `SettleSnapshot` 同形） |
+| `lastOutcome` | `{kind, loserSeat, winners[{seat,zimo,gangShang,qiangGang,tags}]}` |
+| `viewer` | `{kind:'player'|'spectator', seat}` |
+| `hand` | **只有自己**：`{concealed[], drawnTile, melds[], justPeng}`；观战者为 `null` |
+| `options[]` | **只有自己**：`{type, priority, distance, tile, huPreview}`（自己的回合/响应） |
+
+映射到前端 `NanfengSnapshot` 的规则：
+
+- `own` ← `hand`（`concealed` 就是整数牌码，不用转换）；`seats[i]` ← `handSizes[i]` + `melds[i]`；
+- `pending` ← `claim`（`kind:'claim'`，`seat` = `viewer.seat`，`tile`=`triggerTile`，`from`=`triggerSeat`；`gangSeat !== null` 时按"抢杠"只给胡/过）；
+  自己的回合没有 `claim`，用 `options` 合成 `kind:'turn'`；
+- `settle` ← `lastSettle`，`outcome` ← `lastOutcome`，`ma` ← `maCount`/`maScore`/`lastSettle.maDetail`，`buyerName` ← `seating.sittingOut` 查 `slots`；
+- 3D 牌墙：`wallCount` ← `wallLeft`，`wallHeadDrawn` ← `136 - maCount - wallLeft`；**服务端不发骰点**，`dice` 用 `[1,1]` 兜底（只影响牌山开口的观感）；
+- `seatNames` ← `slots` 的昵称（按 `seating.table` 顺序），观战者自己的名字取 `slots[sittingOut]`。
+
+### 10.6 请求体与鉴权（`rooms.py` 106-134 / 135-274）
+
+```jsonc
+// POST /api/rooms
+{ "mode": "east",        // east | hanchan，默认 east（本作只有一种场制，先用 east）
+  "capacity": 5,         // 后端写死 5 个连接位；传 2/3/4 也按 5 处理
+  "matchLength": 4,      // 4 | 8 | 16（庄数）
+  "maCount": 0,          // 0 | 1 | 2 | 4
+  "rulesetId": "nanfeng" // 只接受南丰，其他值 409
+}
+
+// POST /api/rooms/{id}/join
+{ "nickname": "你", "avatar": "" }        // nickname 1..20
+
+// POST /api/rooms/{id}/ready | leave | DELETE /api/rooms/{id}
+{ "seat": 2, "rejoinCode": "…", "ready": true }   // ready 只有 ready 接口用
+```
+
+返回：`create` → 房间视图；`join` → `{roomId, seat, rejoinCode, …}`；`ready` → `{roomId, seat, ready}`；
+`start` → `{roomId, status}`；`leave` → `{roomId, seat, left}`；`close` → `{roomId, closed}`。
+
+> **⚠ 鉴权**：`create / meta / get / join / start` 都带 `Depends(require_wakudemo_login)`，
+> 也就是**必须先有 WakuDemo 登录会话**（HttpOnly cookie）才能建房/加入/开局；
+> `ready / leave / close` 只认 `rejoinCode`，不需要登录。
+>
+> 结论：**后端联机 = WakuDemo 登录 + 本后端**。部署时要配 `WAKUDEMO_CLIENT_ID / BASE_URL /
+> REDIRECT_URI / FRONTEND_URL`，前端要有登录入口（独立站那张账号卡片）。如果不想接 WakuDemo，
+> 就得改后端把 `require_wakudemo_login` 换成匿名/自定义 token —— 那是后端仓库的改动。
+
+### 10.7 前端已经有一整套 WS 联机栈，别重写（2026-11 复核）
+
+`src/game/online/ws/**` 是**同一个后端**的现成客户端（旧玩法在用，`VITE_ONLINE_BACKEND=ws` 切换），
+它跟我们的 §10 协议是同一套。按"原样复用 / 需要南丰化"分开：
+
+| 原样复用 | 理由 |
+|---|---|
+| `transport/roomSocket.ts` | 只做 URL + 重连 + 心跳 + 卡顿检测，与玩法无关（只需确认心跳包是 `{kind:'ping'}`） |
+| `api/roomApi.ts` + `api/httpClient.ts` | 就是 §10.1 那 8 个端点（同一后端 fork），字段一致 |
+| `session/remoteSessionStore.ts` | 房号 / `rejoinCode` / 上次座位 的本地持久化，重连要用 |
+| `session/remoteRoomLifecycle.ts` | 建房/加入/准备/开始/关闭的时序编排（`rejoinCode` 复位、409 处理） |
+| `session/roomPanelSync.ts` | 房间面板与后端状态的同步 |
+| `presentation/openingTimeline.ts`、`settlementTimeline.ts` | 纯表现时序 |
+| `orchestration/snapshotReconciler.ts` | 三分支缓冲（结算中/开局中挂起），南丰同样需要 |
+
+| 需要南丰化（新写，别改旧的） | 理由 |
+|---|---|
+| `protocol/messages.ts` 的南丰版 + `decoder` | 下行 `kind` 是南丰的（`state_snapshot` / `draw` / `settle` / `seating_changed` …），旧的是莲花字段 |
+| **快照 → `NanfengSnapshot` 的映射** | 见 §10.5，纯函数，放 `src/game/nanfeng/net/wsSnapshot.ts`，可直接单测（输入后端快照 JSON，输出我们投影要的形状） |
+| `useNanfengWsGame.ts` | 把上面几块粘成 `NanfengMatchApi`（`snapshot` / `discard` / `submit` / `nextRound` / `canAct` / `setViewSeat`），喂给 `NanfengTable` |
+
+**所以工作量比原计划小很多**：不用写传输层，也不用碰 VibeHub 那套；核心就是一个纯函数映射
+（`wsSnapshot.ts`，可单测）+ 一个薄胶水（`useNanfengWsGame`）+ 房间面板换数据源。
+
+> 前提仍是 §10.6 的 WakuDemo 登录：独立站那张账号卡片（`src/account/wakudemo/`）必须接上，
+> 否则 `create/join/start` 会 401。
 
