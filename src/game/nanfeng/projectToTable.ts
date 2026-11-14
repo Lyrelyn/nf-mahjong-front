@@ -194,7 +194,7 @@ function shiftAction(
   }
 }
 
-export function projectToTable(snapshot: NanfengSnapshot): NanfengTableProjection {
+export function projectToTable(snapshot: NanfengSnapshot, selectedIndex = -1): NanfengTableProjection {
   const view = snapshot.viewSeat
   const relative = (seat: number): number => (seat - view + 4) % 4
   const players = Array.from({ length: 4 }, (_, index) => playerOf(snapshot, (view + index) % 4, relative))
@@ -232,7 +232,7 @@ export function projectToTable(snapshot: NanfengSnapshot): NanfengTableProjectio
     wallBreakIndex: snapshot.wallBreakIndex,
     wallCount,
     currentPlayer: relative(snapshot.turn),
-    selectedIndex: -1,
+    selectedIndex,
     turnSeconds: 0,
     lastDiscard,
     actionPrompt: promptOf(snapshot, relative),

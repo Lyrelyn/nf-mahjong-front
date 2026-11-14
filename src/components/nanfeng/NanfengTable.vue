@@ -3,7 +3,7 @@
 // 只做两件事——把南丰状态投影成 HUD 要的视图、把 HUD 的事件翻成引擎动作。
 //
 // 规则判定、合法动作集合都由运行时提供；这里不判断任何牌型。
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import GameTableHud from '../table/GameTableHud.vue'
 import { useAudio, useEffectPlayer } from '../../game/core/presentation/useAudio'
 import { toCode } from '../../game/nanfeng/tileCodec'
@@ -51,7 +51,30 @@ const localGame = props.game === undefined
 const game: NanfengMatchApi = props.game ?? localGame!
 const snap = game.snapshot
 
-const view = computed(() => projectToTable(snap.value))
+/**
+ * 手机上的出牌手势：**第一下点起来，再点一下打出去**。
+ *
+ * 旧表现是"双击出牌"——第二次必须在 360ms 内，慢一点就变成"点了没反应"。
+ * 这里把"哪张牌被点起来了"记在本地：点同一张的第二次（不管隔多久）就打出去，
+ * 点别的牌则换成把它点起来。
+ */
+const selected = ref(-1)
+
+function onSelectTile(index: number) {
+  if (selected.value === index) {
+    onDiscard(index)
+    selected.value = -1
+    return
+  }
+  selected.value = index
+}
+
+const view = computed(() => projectToTable(snap.value, selected.value))
+
+// 轮次/窗口一变，之前点起来的那张就不该还立着。
+watch(() => `${snap.value.pending?.kind ?? ''}@${snap.value.pending?.seat ?? -1}:${snap.value.turn}`, () => {
+  selected.value = -1
+})
 
 // `?debug=1` 时显示投影/状态的关键数字：判断"没牌"是投影没给，还是 3D 没画。
 const showDebug = new URLSearchParams(window.location.search).get('debug') === '1'
@@ -151,6 +174,8 @@ const maRevealed = computed(() => snap.value.ma.tiles !== null)
         @gang-from-discard="onGangFromDiscard"
         @pass="onPass"
         @select-seat="onSelectSeat"
+        @select-tile="onSelectTile"
+        @clear-selection="selected = -1"
       />
     </div>
 
