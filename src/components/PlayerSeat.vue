@@ -21,16 +21,20 @@ const props = withDefaults(defineProps<{
   /** 主题表现头像覆盖，不修改权威玩家 avatar。 */
   avatarOverride?: string
   emoteEnabled?: boolean
+  /** 头像可点：点了切视角到这一家（轮空观战时用）。 */
+  selectable?: boolean
   quickChatBubble?: boolean
   /** 玩家快捷语或大模型发言，由上层管理过期。 */
   bubble?: { text: string; id: number; persistent?: boolean } | null
-}>(), { active: false, actionActive: false, scoreDelta: 0, scoreFlowId: 0, dealer: false, avatarOverride: undefined, bubble: null })
-const emit = defineEmits<{ emote: [] }>()
+}>(), { active: false, actionActive: false, scoreDelta: 0, scoreFlowId: 0, dealer: false, avatarOverride: undefined, bubble: null, selectable: false })
+const emit = defineEmits<{ emote: []; select: [] }>()
 
 // 外部头像（联机真人）加载失败 → 回退到本地座位默认头像
 // 已物化的头像用本地 blob（座位会随快照重建，避免每次重建都做一次协商校验）。
 const nicknameOpen = ref(false)
 function activateAvatar() {
+  // 能切视角时点头像就只做切换（这个入口比"看昵称"有用得多）
+  if (props.selectable) { emit('select'); return }
   if (props.emoteEnabled) emit('emote')
   else nicknameOpen.value = !nicknameOpen.value
 }
@@ -53,10 +57,11 @@ const animeStyle = computed(() => props.themeName === 'llmAnime'
   <section class="player-seat" :class="[`seat-${position}`, { active, 'action-active': actionActive, 'nickname-open': nicknameOpen }]" :style="animeStyle" :aria-label="player.name" :data-table-seat="player.seat">
     <div class="avatar-wrap">
       <span v-if="dealer" class="dealer-badge">庄</span>
-      <button v-if="nicknameOnTap || emoteEnabled" type="button" class="avatar-button"
-        :aria-label="emoteEnabled ? `对${player.name}使用互动道具` : `查看${player.name}的昵称`"
+      <button v-if="nicknameOnTap || emoteEnabled || selectable" type="button" class="avatar-button"
+        :class="{ selectable }"
+        :aria-label="selectable ? `切换到${player.name}的视角` : (emoteEnabled ? `对${player.name}使用互动道具` : `查看${player.name}的昵称`)"
         :aria-haspopup="emoteEnabled ? 'dialog' : undefined"
-        :aria-expanded="emoteEnabled ? undefined : nicknameOpen" :title="emoteEnabled ? player.name : undefined"
+        :aria-expanded="emoteEnabled ? undefined : nicknameOpen" :title="selectable ? `看${player.name}的视角` : (emoteEnabled ? player.name : undefined)"
         @click.stop="activateAvatar" @keydown.esc="nicknameOpen = false" @blur="nicknameOpen = false">
         <img class="avatar" :src="avatarSrc" :alt="`${player.name}头像`" @error="onAvatarError" />
       </button>

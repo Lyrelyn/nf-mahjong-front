@@ -96,6 +96,8 @@ interface Props {
   chatBubbles?: Record<number, TableChatBubble>
   emoteCues?: readonly TableEmoteCue[]
   sendInteraction?: (action: TableInteraction) => boolean
+  /** 头像可点：点了把视角切到那一家的座位（南丰 5 人换座轮空观战时用）。 */
+  seatsSelectable?: boolean
 }
 
 const props = defineProps<Props>()
@@ -118,6 +120,8 @@ const emit = defineEmits<{
   nextRound: []
   returnToLobby: []
   leaveMatch: []
+  /** 点了某个座位的头像：把视角切过去（绝对座位号）。 */
+  selectSeat: [seat: number]
 }>()
 
 const settlementHost = ref<InstanceType<typeof BloodFlowSettlementHost>|null>(null)
@@ -649,6 +653,8 @@ function onAvatarError(entry: GamePlayer) {
     <PlayerSeat
       v-for="(player, index) in players.slice(1)" :key="player.seat" :player="player"
       nickname-on-tap
+      :selectable="seatsSelectable === true"
+      @select="$emit('selectSeat', player.seat)"
       :position="seatPosition[index + 1]" :active="currentPlayer === index + 1"
       :action-active="tableActionEvent?.actorIndex === index + 1" :score-delta="scoreDeltaFor(index + 1)"
       :score-flow-id="presentedScoreFlowEvent?.id" :dealer="dealer === index + 1"

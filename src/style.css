@@ -3602,6 +3602,10 @@ button { font: inherit; }
 }
 .avatar-button:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: 2px; }
 .avatar-button .avatar { pointer-events: none; }
+/* 轮空观战时头像可点：点了把视角切到这一家（虚线框就是"这里能点"的提示）。 */
+.avatar-button.selectable { outline: 2px dashed rgba(255, 212, 121, 0.6); outline-offset: 2px; }
+.avatar-button.selectable:hover { outline-style: solid; background: rgba(255, 212, 121, 0.14); }
+.avatar-button.selectable:active { transform: scale(0.96); }
 .player-seat.nickname-open,
 .user-identity.nickname-open { z-index: 25; }
 .nickname-popover {

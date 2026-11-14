@@ -139,7 +139,8 @@ http://localhost:5173
 
 终端输出的地址应作为最终依据。如果端口已被占用，Vite 可能选择其他可用端口。
 
-进入大厅后选择“东风场”或“半庄场”开始单机对战，或在“联机对战”下创建/加入房间。移动端建议横屏使用；部分浏览器不允许网页自动锁定方向，此时请手动横置设备。
+**根地址进的是南丰麻将大厅**（选「5 人轮换 / 4 人局」与买码张数 → 进桌）；旧的莲花广麻大厅退到
+`http://localhost:5173/?game=lotus` 兜底，等删旧代码时一起移除。南丰这边移动端建议横屏使用。
 
 **联机对战**在独立站沿用原后端（`VITE_API_BASE` 与 WakuDemo Cookie）；在 VibeHub 平台部署后使用真实 SDK，登录后创建/加入房间，由房主设备运行对局引擎。本地 `npm run dev` 默认使用 `mockVibeHub`（BroadcastChannel）验证确定性流程，不需要旧 WebSocket 房间后端。真实 P2P 行为必须上线验收，详见 [验收策略](docs/vibehub-adaptation-checklist.md)。`backend/` 仍可提供 TTS/LLM 网关；Vite 的 `/api`、`/ws` 代理默认指向 `http://127.0.0.1:8000`，可通过 `VITE_API_TARGET` 调整。
 
