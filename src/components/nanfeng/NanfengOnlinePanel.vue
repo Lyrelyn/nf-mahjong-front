@@ -86,19 +86,29 @@ async function joinRoom() {
         <span>昵称</span>
         <input v-model="online.nickname.value" maxlength="12" placeholder="输入昵称" />
       </label>
+
+      <!-- 建房：房号由服务端生成，所以这里**不给**房号输入框（给了会让人以为能自选） -->
       <div class="remote-entry-actions">
         <button class="remote-create" type="button" data-action-role="primary" :disabled="busy" @click="createRoom">
           创建房间
         </button>
-        <button class="remote-join-btn" type="button" data-action-role="primary" :disabled="busy" @click="joinRoom">
-          加入房间
-        </button>
       </div>
+
+      <div class="remote-divider"><span>或者用房间号加入</span></div>
+
+      <!-- 加入：房号输入只属于这一条路 -->
       <label class="remote-field">
         <span>房间号</span>
         <input v-model="joinCodeInput" maxlength="6" placeholder="6 位房间号" @keyup.enter="joinRoom" />
       </label>
-      <p class="nf-online-note">联机固定 5 人：4 人打牌 + 1 人轮空买码，每局按规矩换人。</p>
+      <div class="remote-entry-actions">
+        <button class="remote-join-btn" type="button" data-action-role="primary" :disabled="busy" @click="joinRoom">
+          加入房间
+        </button>
+      </div>
+      <p class="nf-online-note">
+        {{ players === 5 ? '5 人轮换：4 人打牌 + 1 人轮空买码' : '4 人局：不换座、不买码' }}，人不够由服务端 AI 补位。
+      </p>
     </template>
 
     <!-- 已在房里：房间号 + 座位 + 准备/开局 -->
@@ -192,4 +202,13 @@ async function joinRoom() {
 }
 .nf-slot-action:hover { border-style: solid; border-color: var(--theme-accent); }
 .nf-empty { color: var(--theme-text-muted); opacity: .72; }
+.remote-divider {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 11px; color: var(--theme-text-muted); letter-spacing: .08em;
+}
+.remote-divider::before,
+.remote-divider::after {
+  content: ''; flex: 1; height: 1px;
+  background: color-mix(in srgb, var(--theme-border) 32%, transparent);
+}
 </style>

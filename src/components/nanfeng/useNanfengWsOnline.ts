@@ -10,6 +10,9 @@ import { useNanfengWsGame, type NanfengWsGame } from '../../game/nanfeng/net/use
 import type { NanfengMatchApi } from '../../game/nanfeng/useNanfengMatch'
 
 export interface WsSeat {
+  /** 后端 REST 的历史键名（房间面板按 `seat` 找座位）。 */
+  seat: number
+  /** WS 快照里的同名键；与 `seat` 是同一个值。 */
   slot: number
   nickname: string
   avatar: string
@@ -107,8 +110,42 @@ export function useNanfengWsOnline(options: NanfengWsOnlineOptions): NanfengWsOn
 
   function saveRejoin(): void {
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ roomId: roomId.value, rejoinCode }))
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        roomId: roomId.value,
+        rejoinCode,
+        seat: mySeat.value,
+      }))
     } catch { /* 存不了就算了 */ }
+  }
+
+  /**
+   * 清掉上一次留下的房间。
+   *
+   * 后端的身份是"一个 playerId 同时只能在一个房间里"（防占房）：如果上一次建房后直接
+   * 关页面/换页面，座位还挂在那儿，下一次创建就会 409 `ALREADY_IN_ROOM`。
+   * 所以建房/加房前先用存下来的 `rejoinCode` 礼貌地 leave 一次，失败也无所谓。
+   */
+  async function clearPreviousRoom(): Promise<void> {
+    let saved: { roomId?: string; rejoinCode?: string; seat?: number } | null = null
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY)
+      saved = raw === null ? null : JSON.parse(raw) as typeof saved
+    } catch {
+      saved = null
+    }
+    if (saved?.roomId && saved.rejoinCode) {
+      try {
+        await post(`/api/rooms/${encodeURIComponent(saved.roomId)}/leave`, {
+          seat: saved.seat ?? 0,
+          rejoinCode: saved.rejoinCode,
+        })
+      } catch {
+        // 房间早没了 / 码过期：忽略
+      }
+    }
+    try {
+      window.localStorage.removeItem(STORAGE_KEY)
+    } catch { /* 忽略 */ }
   }
 
   function closeSocket(): void {
@@ -143,8 +180,11 @@ export function useNanfengWsOnline(options: NanfengWsOnlineOptions): NanfengWsOn
   async function refreshRoom(): Promise<void> {
     const info = await fetch(url(`/api/rooms/${encodeURIComponent(roomId.value)}`), { credentials: 'include' })
     if (!info.ok) return
-    const data = await info.json() as { slots?: (WsSeat | null)[] }
-    seats.value = (data.slots ?? []).filter((slot): slot is WsSeat => slot !== null)
+    const data = await info.json() as { slots?: (Omit<WsSeat, 'seat'> | null)[] }
+    // 后端同时给 `seats[].seat` 与 `slots[].slot`；面板按 `seat` 找座位，所以这里补齐两个键。
+    seats.value = (data.slots ?? [])
+      .filter((slot): slot is Omit<WsSeat, 'seat'> => slot !== null)
+      .map((slot) => ({ ...slot, seat: slot.slot }))
   }
 
   async function createRoom(): Promise<void> {
@@ -155,6 +195,8 @@ export function useNanfengWsOnline(options: NanfengWsOnlineOptions): NanfengWsOn
     }
     status.value = 'joining'
     try {
+      // 上一次的房间可能还占着这个 playerId → 先退掉，否则 409 ALREADY_IN_ROOM
+      await clearPreviousRoom()
       const created = await post<{ roomId: string }>('/api/rooms', {
         mode: 'east',
         // 4 或 5，后端只认这两个值（3 / 6 直接 422）：决定连接位数与有无轮空买码位。
