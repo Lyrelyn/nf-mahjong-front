@@ -172,6 +172,12 @@ export function useNanfengWsOnline(options: NanfengWsOnlineOptions): NanfengWsOn
     socket = ws
     ws.onmessage = (event) => {
       wsGame?.receive(event.data)
+      // 大厅阶段服务端给的是 `phase: 'LOBBY'` 的空快照；一旦变成真牌局就切进牌桌。
+      // 这样**所有已成连接的人**都会自动进桌 —— 不只是点「开始对局」的房主。
+      if (wsGame !== null && game.value === null && wsGame.api.snapshot.value.phase !== 'LOBBY') {
+        game.value = wsGame.api
+        status.value = 'playing'
+      }
     }
     ws.onopen = () => {
       pingTimer = setInterval(() => {
@@ -194,6 +200,18 @@ export function useNanfengWsOnline(options: NanfengWsOnlineOptions): NanfengWsOn
     seats.value = (data.slots ?? [])
       .filter((slot): slot is Omit<WsSeat, 'seat'> => slot !== null)
       .map((slot) => ({ ...slot, seat: slot.slot }))
+  }
+
+  /**
+   * 进房就连 WS（大厅阶段也连）。
+   *
+   * 之前是"房主点开始时才连"，结果只有房主连上了，别人还在大厅干等。
+   * 服务端在开局后会把快照推给**所有已连接的座位**，所以连接必须提前建立；
+   * 大厅阶段的快照是 `phase: 'LOBBY'`，`game` 要等真牌局才暴露，避免误进牌桌。
+   */
+  function enterLobbySocket(): void {
+    wsGame = useNanfengWsGame({ send: (message) => { socket?.send(JSON.stringify(message)) } })
+    connect()
   }
 
   async function createRoom(): Promise<void> {
@@ -227,6 +245,7 @@ export function useNanfengWsOnline(options: NanfengWsOnlineOptions): NanfengWsOn
       saveRejoin()
       status.value = 'lobby'
       await refreshRoom()
+      enterLobbySocket()
     } catch (caught) {
       error.value = caught instanceof Error ? caught.message : '建房失败'
       status.value = 'idle'
@@ -256,6 +275,7 @@ export function useNanfengWsOnline(options: NanfengWsOnlineOptions): NanfengWsOn
       saveRejoin()
       status.value = 'lobby'
       await refreshRoom()
+      enterLobbySocket()
     } catch (caught) {
       error.value = caught instanceof Error ? caught.message : '加入失败'
       status.value = 'idle'
@@ -279,12 +299,10 @@ export function useNanfengWsOnline(options: NanfengWsOnlineOptions): NanfengWsOn
     if (roomId.value === '') return
     error.value = ''
     try {
-      // start 只从 body 读 playerId 认房主（漏了就是 403 NOT_CREATOR）
+      // start 只从 body 读 playerId 认房主（漏了就是 403 NOT_CREATOR）。
+      // 进桌**不在这里**：所有人都已经连着 WS，服务端开局后会把快照推给每个座位。
       await post(`/api/rooms/${encodeURIComponent(roomId.value)}/start`, { playerId })
       status.value = 'playing'
-      wsGame = useNanfengWsGame({ send: (message) => { socket?.send(JSON.stringify(message)) } })
-      game.value = wsGame.api
-      connect()
     } catch (caught) {
       error.value = caught instanceof Error ? caught.message : '开局失败'
     }
