@@ -286,6 +286,17 @@ export interface NanfengMatchApi {
 > - `GET /api/rooms/{id}` 同时返回 `seats`（键 `seat`）与 `slots`（键 `slot`，对齐 `WsSeat`）。
 
 
+> **2026-11 后端补充：空位 AI 补位**
+>
+> - **1 个真人也照样开局**：只要房主 ready，其余空连接位由服务端 AI 补满，
+>   `POST /api/rooms/{id}/start` 不再要求 4 人；`NOT_ALL_READY` 只对真人生效。
+> - 快照 `slots[i]` 多了 `isAi: true`（AI 位恒 `ready: true`、`connected: true`、`nickname: 'AI 1'`…），
+>   `seating.table` / `rotation` 里 AI 照常占位；`seats`（REST）同样带 `isAi`。
+> - AI 的落子**完全在服务端**：不要给 AI 座位发动作，也不需要等 `ACTION_PROMPT`；
+>   它会在 300~600ms 后自己出牌/碰杠/胡。
+> - `capacity=5` 时轮空买码位也可以是 AI（"1 真人 + 3 AI + 1 AI 买码"），买码与换座照旧。
+> - 房间结束后真人加入会顶掉一个 AI 位（不会 `ROOM_FULL`）。
+
 ### 10.5 快照字段（`snapshot_for` + `project_view`，全部已抄）
 
 房间层：

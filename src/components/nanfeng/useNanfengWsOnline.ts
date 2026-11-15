@@ -18,6 +18,8 @@ export interface WsSeat {
   avatar: string
   ready: boolean
   connected: boolean
+  /** 服务端 AI 补位的座位：`ready`/`connected` 恒真，昵称形如 `AI 1`。 */
+  isAi?: boolean
 }
 
 export interface NanfengWsOnlineOptions {
@@ -34,12 +36,16 @@ export interface NanfengWsOnline {
   joinCode: Ref<string>
   seats: Ref<WsSeat[]>
   mySeat: Ref<number>
+  /** 房间真实的连接位数（4 / 5），由后端返回，**不要用本地大厅的选择**。 */
+  capacity: Ref<number>
   error: Ref<string>
   status: Ref<string>
   /** 建房的那个人（只在 UI 上决定要不要显示"开始对局"）。 */
   isHost: Ref<boolean>
   /** WS 模式没有人机设置（服务端补位），保留空对象让房间面板复用同一套组件。 */
   botNames: Ref<Record<number, string>>
+  /** 服务端自动补位，面板不显示"设置人机"。 */
+  supportsBots: false
   game: Ref<NanfengMatchApi | null>
   createRoom: () => Promise<void>
   joinRoom: () => Promise<void>
@@ -75,6 +81,8 @@ export function useNanfengWsOnline(options: NanfengWsOnlineOptions): NanfengWsOn
   const joinCode = ref('')
   const seats = ref<WsSeat[]>([])
   const mySeat = ref(-1)
+  /** 房间真实连接位数：加入别人的房间时要按**房主建房时**的来，不能用本地大厅的选择。 */
+  const capacity = ref(5)
   const error = ref('')
   const status = ref<string>('idle')
   const isHost = ref(false)
@@ -180,7 +188,8 @@ export function useNanfengWsOnline(options: NanfengWsOnlineOptions): NanfengWsOn
   async function refreshRoom(): Promise<void> {
     const info = await fetch(url(`/api/rooms/${encodeURIComponent(roomId.value)}`), { credentials: 'include' })
     if (!info.ok) return
-    const data = await info.json() as { slots?: (Omit<WsSeat, 'seat'> | null)[] }
+    const data = await info.json() as { capacity?: number; slots?: (Omit<WsSeat, 'seat'> | null)[] }
+    if (typeof data.capacity === 'number' && data.capacity > 0) capacity.value = data.capacity
     // 后端同时给 `seats[].seat` 与 `slots[].slot`；面板按 `seat` 找座位，所以这里补齐两个键。
     seats.value = (data.slots ?? [])
       .filter((slot): slot is Omit<WsSeat, 'seat'> => slot !== null)
@@ -302,7 +311,8 @@ export function useNanfengWsOnline(options: NanfengWsOnlineOptions): NanfengWsOn
   })
 
   return {
-    roomId, nickname, joinCode, seats, mySeat, error, status, isHost, botNames, game,
+    roomId, nickname, joinCode, seats, mySeat, capacity, error, status, isHost, botNames, game,
+    supportsBots: false as const,
     createRoom, joinRoom, toggleReady, startMatch, leave,
   }
 }

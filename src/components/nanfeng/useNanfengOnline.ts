@@ -35,11 +35,20 @@ export interface NanfengOnline {
   seats: Ref<LobbySeat[]>
   roomId: Ref<string>
   mySeat: Ref<number>
+  /** 房间真实连接位数（有的后端会给）；面板优先用它，没有才退回本地选择。 */
+  capacity?: Ref<number>
   isHost: Ref<boolean>
   status: Ref<string>
   error: Ref<string>
   /** 开局后才有：直接喂给 `NanfengTable`。 */
   game: Ref<NanfengMatchApi | null>
+  /**
+   * 房间面板能不能让房主"设置人机"。
+   *
+   * VibeHub 那条路是房主权威、人机是本机 AI，需要房主指定；WS 后端由**服务端**补位，
+   * 所以那边是 `false`（面板隐藏按钮，避免"设了别人看不到"）。
+   */
+  supportsBots?: boolean
   /** 空座位的人机名字（房主可改；键是大厅座位号）。 */
   botNames: Ref<Record<number, string>>
   createRoom: () => Promise<void>

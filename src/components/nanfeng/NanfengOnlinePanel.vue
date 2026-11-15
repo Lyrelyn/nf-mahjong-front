@@ -19,18 +19,23 @@ const joinCodeInput = ref('')
 const seats = computed(() => props.online.seats.value)
 const mySeat = computed(() => props.online.mySeat.value)
 /**
- * 座位槽位：`players` 个人数位，坐人的显示昵称+准备态，空位就是人机（房主可改名）。
- * 人少了不用等——空位由本机 AI 补。
+ * 座位槽位：`roomSize` 个位置。
+ *
+ * 后端 AI 补位的座位也会出现在 `seats` 里（`isAi: true`），它们不是真人：
+ * 只显示名字 + 「人机」，不参与"是否准备"的判定（它们的 ready 恒真）。
  */
-const slots = computed(() => Array.from({ length: props.players }, (_, seat) => {
-  const human = seats.value.find((item) => item.seat === seat)
-  // name === '' 表示**空位**（没设人机）；设了人机就有名字。
-  const name = human?.nickname ?? props.online.botNames.value[seat] ?? ''
+const slots = computed(() => Array.from({ length: roomSize.value }, (_, seat) => {
+  const row = seats.value.find((item) => item.seat === seat)
+  const human = row !== undefined && row.isAi !== true
+  const ai = row !== undefined && row.isAi === true
+  // name === '' 表示**空位**；有人或有 AI 就有名字。
+  const name = row?.nickname ?? (human || ai ? '' : props.online.botNames.value[seat] ?? '')
   return {
     seat,
     name,
-    human: human !== undefined,
-    ready: human?.ready === true,
+    human,
+    ai,
+    ready: human ? row.ready : ai,
     me: seat === mySeat.value,
   }
 }))
@@ -58,9 +63,19 @@ async function startMatch() {
   await props.online.startMatch()
 }
 const myReady = computed(() => seats.value.find((seat) => seat.seat === mySeat.value)?.ready === true)
+/**
+ * 座位数以**房间的**为准：加入别人的房间时，本地大厅选的 4/5 跟房主建房时选的可能不同，
+ * 用本地值会把 5 人房画成 4 人房。后端给了 `capacity` 就用它。
+ */
+const roomSize = computed(() => props.online.capacity?.value ?? props.players)
 // 人不够也能开：空位由 AI 补，所以只要求"在场的人都已准备"。
 const allReady = computed(() => seats.value.length >= 1 && seats.value.every((seat) => seat.ready))
 const busy = computed(() => props.online.status.value === 'creating' || props.online.status.value === 'joining')
+/**
+ * 能不能设置人机：只有"房主权威"那条路（VibeHub）才由房主指定人机；
+ * WS 后端由服务端补位，前端设了别人也看不到，所以直接不给按钮。
+ */
+const canEditBots = computed(() => props.online.isHost.value && props.online.supportsBots !== false)
 
 async function createRoom() {
   await props.online.createRoom()
@@ -78,8 +93,8 @@ async function joinRoom() {
     <!-- 还没进房：昵称 + 建房/加房 -->
     <template v-if="online.roomId.value === ''">
       <p class="nf-online-note">
-        {{ players === 5 ? '5 人轮换' : '4 人局' }} ·
-        {{ players === 5 && maCount > 0 ? `买 ${maCount} 张码` : '不买码' }}
+        {{ roomSize === 5 ? '5 人轮换' : '4 人局' }} ·
+        {{ roomSize === 5 && maCount > 0 ? `买 ${maCount} 张码` : '不买码' }}
         <small>（人数/买码沿用上面那两行，房主建房时生效）</small>
       </p>
       <label class="remote-field">
@@ -107,7 +122,7 @@ async function joinRoom() {
         </button>
       </div>
       <p class="nf-online-note">
-        {{ players === 5 ? '5 人轮换：4 人打牌 + 1 人轮空买码' : '4 人局：不换座、不买码' }}，人不够由服务端 AI 补位。
+        {{ roomSize === 5 ? '5 人轮换：4 人打牌 + 1 人轮空买码' : '4 人局：不换座、不买码' }}，人不够由服务端 AI 补位。
       </p>
     </template>
 
@@ -115,7 +130,7 @@ async function joinRoom() {
     <template v-else>
       <p class="nf-online-room">
         房间号 <b>{{ online.roomId.value }}</b>
-        <small>（{{ seats.length }} / {{ players }} 人，空位由 AI 补）</small>
+        <small>（{{ seats.length }} / {{ roomSize }} 人，空位由 AI 补）</small>
       </p>
       <ul class="nf-online-seats">
         <li
@@ -131,7 +146,7 @@ async function joinRoom() {
           <!-- 已设人机：房主可改名 / 移除 -->
           <template v-else-if="slot.name !== ''">
             <input
-              v-if="online.isHost.value"
+              v-if="canEditBots"
               class="nf-bot-name"
               :value="slot.name"
               maxlength="8"
@@ -139,13 +154,13 @@ async function joinRoom() {
               @input="online.botNames.value[slot.seat] = ($event.target as HTMLInputElement).value"
             />
             <span v-else>{{ slot.name }}</span>
-            <button v-if="online.isHost.value" class="nf-slot-action" type="button" @click="removeBot(slot.seat)">移除</button>
+            <button v-if="canEditBots" class="nf-slot-action" type="button" @click="removeBot(slot.seat)">移除</button>
             <em v-else>人机</em>
           </template>
-          <!-- 空位：只有房主能点成"人机" -->
+          <!-- 空位：只有房主权威那条路能点成"人机"；WS 后端由服务端补位 -->
           <template v-else>
-            <span class="nf-empty">空位</span>
-            <button v-if="online.isHost.value" class="nf-slot-action" type="button" @click="addBot(slot.seat)">设置人机</button>
+            <span class="nf-empty">{{ online.supportsBots === false ? '空位（服务端补 AI）' : '空位' }}</span>
+            <button v-if="canEditBots" class="nf-slot-action" type="button" @click="addBot(slot.seat)">设置人机</button>
           </template>
         </li>
       </ul>
