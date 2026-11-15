@@ -25,6 +25,13 @@ export interface NanfengWsOptions {
   seatNames?: readonly string[]
   /** 发一条消息给服务端（调用方接 `roomSocket.send`）。 */
   send: (message: Record<string, unknown>) => void
+  /**
+   * 音效出口（与 `useNanfengMatch` 同一个签名）。
+   *
+   * WS 模式下引擎在服务端，没有 `GameEvent` 可播，所以靠**快照差分**判断该响什么：
+   * 新牌进牌河 = 出牌、副露变多 = 碰/杠、结算出现 = 胡、自己摸到新牌 = 摸牌。
+   */
+  playSound?: (name: string, volume?: number) => void
 }
 
 export interface NanfengWsGame {
@@ -47,6 +54,7 @@ export function useNanfengWsGame(options: NanfengWsOptions): NanfengWsGame {
   const snapshot = shallowRef<NanfengSnapshot>(
     createEmptyNanfengSnapshot(options.seatNames ?? ['本家', '下家', '对家', '上家']),
   )
+  const sound = options.playSound ?? (() => {})
   let appliedSeq = -1
   let reqId = 0
   let lastError: string | null = null
@@ -55,6 +63,33 @@ export function useNanfengWsGame(options: NanfengWsOptions): NanfengWsGame {
 
   function send(message: Record<string, unknown>): void {
     options.send(message)
+  }
+
+  /**
+   * 靠快照差分补音效。
+   *
+   * 服务端只推快照，不发明细事件，所以只能比"上一帧 vs 这一帧"：
+   * 牌河变长 → 出牌；副露变多 → 碰/杠；结算出现 → 胡；自己多了一张摸牌 → 摸牌。
+   */
+  function playDiff(prev: NanfengSnapshot, next: NanfengSnapshot): void {
+    const count = <T,>(list: readonly T[]): number => list.length
+    const discards = (snap: NanfengSnapshot): number => snap.discards.reduce((sum, pile) => sum + count(pile), 0)
+    const melds = (snap: NanfengSnapshot): number => snap.seats.reduce((sum, seat) => sum + count(seat.melds), 0)
+
+    if (prev.status === 'playing' && next.status === 'round-over' && next.settle !== null) {
+      sound('hu.mp3')
+      return
+    }
+    if (melds(next) > melds(prev)) {
+      const last = next.seats.flatMap((seat) => seat.melds).slice(-1)[0]
+      sound(last !== undefined && last.kind !== 'PENG' ? 'gang.mp3' : 'peng.mp3')
+      return
+    }
+    if (discards(next) > discards(prev)) {
+      sound('discard.mp3')
+      return
+    }
+    if (prev.own.drawn === null && next.own.drawn !== null) sound('draw.mp3')
   }
 
   function receive(raw: unknown): void {
@@ -91,7 +126,10 @@ export function useNanfengWsGame(options: NanfengWsOptions): NanfengWsGame {
     // 观战时保留本地选的镜头；在桌上则永远从自己看出去。
     const viewerSeat = raw.viewer.kind === 'player' ? raw.viewer.seat : null
     const viewSeat = viewerSeat === null ? (spectatorView ?? undefined) : null
-    snapshot.value = wsSnapshotToNanfeng(raw, { viewSeat, lastError: null })
+    const previous = snapshot.value
+    const next = wsSnapshotToNanfeng(raw, { viewSeat, lastError: null })
+    snapshot.value = next
+    playDiff(previous, next)
   }
 
   const api: NanfengMatchApi = {

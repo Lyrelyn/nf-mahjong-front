@@ -28,6 +28,8 @@ export interface NanfengWsOnlineOptions {
   players: () => 4 | 5
   maCount: () => number
   matchLength?: 4 | 8 | 16
+  /** 音效出口（页面根组件从音频层取，透传给对局客户端）。 */
+  playSound?: (name: string, volume?: number) => void
 }
 
 export interface NanfengWsOnline {
@@ -210,7 +212,10 @@ export function useNanfengWsOnline(options: NanfengWsOnlineOptions): NanfengWsOn
    * 大厅阶段的快照是 `phase: 'LOBBY'`，`game` 要等真牌局才暴露，避免误进牌桌。
    */
   function enterLobbySocket(): void {
-    wsGame = useNanfengWsGame({ send: (message) => { socket?.send(JSON.stringify(message)) } })
+    wsGame = useNanfengWsGame({
+      send: (message) => { socket?.send(JSON.stringify(message)) },
+      playSound: options.playSound,
+    })
     connect()
   }
 

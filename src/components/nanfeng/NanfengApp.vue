@@ -5,7 +5,7 @@
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
 import GameShellHeader from '../shell/GameShellHeader.vue'
 import LobbyDialog from '../lobby/LobbyDialog.vue'
-import { useAudio } from '../../game/core/presentation/useAudio'
+import { useAudio, useEffectPlayer } from '../../game/core/presentation/useAudio'
 import NanfengLobby from './NanfengLobby.vue'
 import type { NanfengLobbySetup } from './lobbySetup'
 import { useNanfengOnline, type NanfengOnline } from './useNanfengOnline'
@@ -28,6 +28,8 @@ const NanfengTable = defineAsyncComponent(() => import('./NanfengTable.vue'))
  * 牌桌那边只注入这里的播放器，避免出现两层 BGM。
  */
 useAudio()
+/** 音频层的播放器：WS 联机时要透传给对局客户端（引擎在服务端，音效靠快照差分）。 */
+const playEffect = useEffectPlayer()
 
 const params = new URLSearchParams(window.location.search)
 const autoPlay = params.get('auto') === '1'
@@ -75,6 +77,7 @@ const online = (useWsBackend
       baseUrl: import.meta.env.VITE_NANFENG_WS_BASE,
       players: () => onlinePlayers.value,
       maCount: () => onlineMa.value,
+      playSound: playEffect ?? undefined,
     })
   : useNanfengOnline({
       players: () => onlinePlayers.value,
