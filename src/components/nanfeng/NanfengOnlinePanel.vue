@@ -145,9 +145,10 @@ async function joinRoom() {
           <!-- 有人坐 -->
           <template v-if="slot.human">
             <span>{{ slot.name }}<template v-if="slot.me">（你）</template></span>
-            <em>{{ slot.ready ? '已准备' : '未准备' }}</em>
+            <!-- 只用文字标"已准备"；未准备留空（不写"未准备"） -->
+            <em v-if="slot.ready">已准备</em>
           </template>
-          <!-- 已设人机：房主可改名 / 移除 -->
+          <!-- 已设人机：房主可改名 / 移除；状态不显示（AI 恒为已准备，写出来是噪音） -->
           <template v-else-if="slot.name !== ''">
             <input
               v-if="canEditBots"
@@ -159,7 +160,6 @@ async function joinRoom() {
             />
             <span v-else>{{ slot.name }}</span>
             <button v-if="canEditBots" class="nf-slot-action" type="button" @click="removeBot(slot.seat)">移除</button>
-            <em v-else>人机</em>
           </template>
           <!-- 空位：只有房主权威那条路能点成"人机"；WS 后端由服务端补位 -->
           <template v-else>

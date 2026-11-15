@@ -11,6 +11,7 @@
  */
 
 import { judgeHu } from '../hu/huJudge';
+import { isPlainHu } from '../hu/plainHu';
 import { requiresSelfDraw } from '../hu/shiSanLan';
 import type { Counts } from '../counts';
 import type { RuleConfig } from '../ruleConfig';
@@ -61,18 +62,22 @@ export function canBuGang(h: HandState, tile: Tile, _cfg: RuleConfig, ownTurn: b
 /**
  * 这手牌能否按 `zimo` 的方式胡。
  *
- * 两条与"怎么胡"有关的规则在这里落地：
+ * 与"怎么胡"有关的规则在这里落地：
  *   - **假胡的点炮开关**（`hu.jiaHu.allowRon`）：`structure === 'NONE'` 说明这手牌只有假胡标签，
  *     开关为假时点炮拒胡、自摸照常（R-03）。
  *   - **十三烂的自摸限制**（R-05）：字牌 5 / 6 张时只能自摸 —— 这是胡牌合法性限制，不只是计分。
- *     判定要用**并入待胡那张牌之后**的 14 张手牌，所以放在这里而不是判胡主干里。
+ *   - **纯平胡只能自摸**（R-12，2026-11 变更）：平胡不能胡别人的牌（点炮/抢杠），其余牌型不受影响。
+ *     判定要用**并入待胡那张牌之后**的 14 张手牌，所以放在这里而不是判胡主干里；
+ *     口径本身在 `hu/plainHu.ts`，与后端 `plain_hu.py` 一一对应。
  */
 function isWinningHand(h: HandState, counts: Counts, cfg: RuleConfig, zimo: boolean): boolean {
   const result = judgeHu(counts, h.melds, cfg);
   if (result.tags.size === 0) return false;
   if (zimo) return true;
   if (result.structure === 'NONE' && !cfg.hu.jiaHu.allowRon) return false;
-  return !requiresSelfDraw(counts);
+  if (requiresSelfDraw(counts)) return false;
+  if (isPlainHu(result.tags)) return false;
+  return true;
 }
 
 /** 自摸：手里已经是成胡的 14 张。 */

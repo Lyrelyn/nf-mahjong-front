@@ -11,6 +11,8 @@
 //
 // 规则一行都不在这里：投影只做形状转换 + 提示语义映射，任何判定都回引擎。
 import type { ActionPrompt, GamePhase, LastDiscard, OpeningStage } from '../core/contracts/gamePort'
+import { waitsFor } from './ai/handValue'
+import { DEFAULT_RULE_CONFIG } from './ruleConfig'
 import type { GamePlayer, Meld as ViewMeld, TableActionEvent, TileType } from '../core/contracts/types'
 import type { Meld } from './melds'
 import type { Tile } from './tiles'
@@ -194,7 +196,69 @@ function shiftAction(
   }
 }
 
+/**
+ * 听牌展示：用引擎现成的 `waitsFor` 给**自己**算一遍。
+ *
+ * 单机时这是本地引擎，联机时是服务端发来的自己那手牌 —— 两条路都成立（前端不发明状态，
+ * 只是把纯函数再跑一遍用于展示）。观战（`humanSeat < 0`，没有手牌）直接跳过。
+ *
+ * `visible` 只用牌河粗略统计，够 HUD 显示"还剩几张"；不参与任何判定。
+ */
+function tingOf(snapshot: NanfengSnapshot): { current: unknown; options: unknown[] } {
+  const hand = snapshot.own
+  // `hand.tiles` 恒为暗牌里的 13 张（`drawn` 单独带一张），所以"已听什么"直接拿它算；
+  // 加上 `drawn` 才是 14 张，用于"打哪张能听"。
+  const base = [...hand.tiles]
+  if (base.length < 2 || base.length % 3 !== 1) return { current: null, options: [] }
+  // `waitsFor` 以"13 张"为门槛，而杠在张数上算 4 张；折算成碰再算听口（胡型判定同样是当刻子看）。
+  const sets = hand.melds.map((meld) => (meld.kind === 'PENG' ? meld : { ...meld, kind: 'PENG' as const }))
+
+  const toCounts = (list: readonly Tile[]): Uint8Array => {
+    const counts = new Uint8Array(64)
+    for (const tile of list) counts[tile] = (counts[tile] ?? 0) + 1
+    return counts
+  }
+  /** 明面张数 = 牌河 + 副露 + 自己这手牌，`waitsFor` 用它算"还剩几张"。 */
+  const visibleOf = (counts: Uint8Array): Uint8Array => {
+    const visible = new Uint8Array(64)
+    for (const pile of snapshot.discards) for (const tile of pile) visible[tile] = (visible[tile] ?? 0) + 1
+    for (const meld of hand.melds) visible[meld.tile] = (visible[meld.tile] ?? 0) + 3
+    for (let tile = 0; tile < counts.length; tile++) visible[tile] = (visible[tile] ?? 0) + counts[tile]!
+    return visible
+  }
+
+  const build = (counts: Uint8Array, discard: Tile | null): unknown => {
+    const visible = visibleOf(counts)
+    const info = waitsFor(counts, sets, DEFAULT_RULE_CONFIG, visible)
+    if (info.tiles.length === 0) return null
+    return {
+      // HUD 与 3D 都吃 `TileType` 字符串，这里统一转码（引擎内部是数字牌码）。
+      discard: discard === null ? null : fromCode(discard),
+      // HUD 每张听口显示"还剩几张"：4 张减去牌河/副露/自己手里已见到的。
+      tiles: info.tiles.map((tile) => ({ tile: fromCode(tile), remaining: Math.max(0, 4 - (visible[tile] ?? 0)) })),
+      // HUD 只读 `tiles`；`any` 表示"听所有牌"这种极端情况，这里恒 false
+      any: false,
+      remaining: info.remaining,
+    }
+  }
+
+  // 逐张试打，看打出后听什么。
+  const options: unknown[] = []
+  if (hand.drawn !== null) {
+    const full = [...base, hand.drawn]
+    for (const tile of new Set(full)) {
+      const next = toCounts(full)
+      next[tile] -= 1
+      const entry = build(next, tile)
+      if (entry !== null) options.push(entry)
+    }
+  }
+
+  return { current: build(toCounts(base), null), options }
+}
+
 export function projectToTable(snapshot: NanfengSnapshot, selectedIndex = -1): NanfengTableProjection {
+  const ting = tingOf(snapshot)
   const view = snapshot.viewSeat
   const relative = (seat: number): number => (seat - view + 4) % 4
   const players = Array.from({ length: 4 }, (_, index) => playerOf(snapshot, (view + index) % 4, relative))
@@ -263,8 +327,8 @@ export function projectToTable(snapshot: NanfengSnapshot, selectedIndex = -1): N
     openingStage: snapshot.opening?.stage ?? null,
     diceValues: [...snapshot.dice],
     diceThrowerIndex: relative(snapshot.dealer),
-    userCurrentWaits: null,
-    userTingOptions: [],
+    userCurrentWaits: ting.current as NanfengTableProjection['userCurrentWaits'],
+    userTingOptions: ting.options as NanfengTableProjection['userTingOptions'],
     userDiscardWaits: null,
     userKongs: userKongsOf(snapshot),
     userHasWindKong: false,

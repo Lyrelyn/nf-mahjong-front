@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="640" viewBox="0 0 520 640" font-family="'Noto Sans SC','Microsoft YaHei',system-ui,sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d1f1b"/>
+      <stop offset="1" stop-color="#081512"/>
+    </linearGradient>
+    <linearGradient id="primary" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffd479"/>
+      <stop offset="1" stop-color="#e0a53c"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="520" height="640" fill="url(#bg)"/>
+
+  <!-- 卡片 -->
+  <rect x="40" y="40" width="440" height="560" rx="18" fill="#0f2a24" stroke="#2c5148"/>
+  <text x="72" y="86" fill="#9fc0b3" font-size="13" letter-spacing="2">联机 · 房间</text>
+
+  <!-- 房间号行 -->
+  <text x="72" y="126" fill="#e8f3ee" font-size="17" letter-spacing="1">房间号</text>
+  <text x="140" y="126" fill="#ffd479" font-size="19" letter-spacing="6" font-weight="700">SXF9K4</text>
+  <text x="270" y="126" fill="#7f9d93" font-size="12">（2 / 5 人，空位由 AI 补）</text>
+
+  <!-- 座位表 -->
+  <g>
+    <!-- 你 · 已准备 -->
+    <rect x="64" y="152" width="392" height="42" rx="8" fill="#123028" stroke="#ffd479"/>
+    <text x="82" y="179" fill="#e8f3ee" font-size="14">甲（你）</text>
+    <text x="392" y="179" fill="#ffd479" font-size="13" text-anchor="end">已准备</text>
+
+    <!-- 真人 · 未准备（不写状态） -->
+    <rect x="64" y="202" width="392" height="42" rx="8" fill="#0e241f" stroke="#24443c"/>
+    <text x="82" y="229" fill="#cfe0d9" font-size="14">乙</text>
+
+    <!-- 服务端 AI（不写状态） -->
+    <rect x="64" y="252" width="392" height="42" rx="8" fill="#0e241f" stroke="#24443c"/>
+    <text x="82" y="279" fill="#cfe0d9" font-size="14">AI 1</text>
+
+    <!-- 空位 -->
+    <rect x="64" y="302" width="392" height="42" rx="8" fill="#0b1c18" stroke="#1c3833" stroke-dasharray="4 4"/>
+    <text x="82" y="329" fill="#6f8c83" font-size="14">空位（服务端补 AI）</text>
+
+    <rect x="64" y="352" width="392" height="42" rx="8" fill="#0b1c18" stroke="#1c3833" stroke-dasharray="4 4"/>
+    <text x="82" y="379" fill="#6f8c83" font-size="14">空位（服务端补 AI）</text>
+  </g>
+
+  <!-- 说明标注 -->
+  <g font-size="11" fill="#6f8c83">
+    <text x="466" y="179" text-anchor="start">← 只有已准备的人有字</text>
+    <text x="466" y="229" text-anchor="start">← 未准备：留空</text>
+    <text x="466" y="279" text-anchor="start">← AI：留空</text>
+  </g>
+
+  <!-- 按钮 -->
+  <rect x="64" y="424" width="184" height="46" rx="10" fill="#153a31" stroke="#2c5148"/>
+  <text x="156" y="453" fill="#cfe0d9" font-size="15" text-anchor="middle">取消准备</text>
+
+  <rect x="264" y="424" width="192" height="46" rx="10" fill="url(#primary)"/>
+  <text x="360" y="453" fill="#20180a" font-size="15" text-anchor="middle" font-weight="700">开始对局</text>
+
+  <!-- 底部说明 -->
+  <g font-size="12" fill="#7f9d93">
+    <text x="64" y="516">点「下一局」后回到这个界面，自己那行会立刻出现「已准备」；</text>
+    <text x="64" y="540">所有真人准备后，房主自动开局，所有人一起回到牌桌。</text>
+    <text x="64" y="566" fill="#5d7a72">（AI 恒为已准备，所以不写状态，也不参与准备判定）</text>
+  </g>
+</svg>

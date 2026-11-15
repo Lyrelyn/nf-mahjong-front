@@ -197,6 +197,7 @@ function backToLobby() {
       <ul class="nf-rules">
         <li>136 张：万 / 条 / 筒 1-9 各 4 张 + 东南西北 + 中发白，无花牌。</li>
         <li>自摸不翻倍：其余三家各付一份；点炮只由放炮者付，<b>一炮多响都算</b>。</li>
+        <li><b>平胡只能自摸</b>：平胡不能胡别人的牌（点炮和抢杠都算别人的牌）；碰碰胡、七对、十三烂、一色、归一、假胡照常可以点炮。</li>
         <li>手牌封顶 8 炮；<b>只有杠分能突破</b>（直杠 2 / 补杠 1 / 暗杠 2，开杠即入账，荒庄也保留）。</li>
         <li>荒庄：庄家赔三家各 1 分，不看听牌。庄家胡了连庄，别人胡了谁胡谁坐庄，流局对家坐庄。</li>
         <li>5 人轮换：每局 1 人轮空买码 —— 点炮者下场，别人自摸则自摸者对家下场，荒庄庄家下场，上一局的买码者回来接管那把椅子。轮空时可以点头像切到任意一家的视角。</li>
@@ -207,9 +208,10 @@ function backToLobby() {
 </template>
 
 <style scoped>
-/* 全屏开关：左下角常驻，别和牌桌自己的「大厅」按钮抢位置 */
+/* 全屏开关：**右下角**。
+   之前放在左下角，正好压住牌桌自己的「← 大厅」按钮 —— 于是"退出对局"看不见也点不到。 */
 .nf-fs-toggle {
-  position: fixed; left: 12px; bottom: 12px; z-index: 48;
+  position: fixed; right: 12px; bottom: 12px; z-index: 48;
   padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 12px;
   border: 1px solid color-mix(in srgb, var(--theme-border) 30%, transparent);
   background: color-mix(in srgb, var(--theme-panel) 62%, transparent);

@@ -183,8 +183,14 @@ export function useNanfengWsOnline(options: NanfengWsOnlineOptions): NanfengWsOn
     ws.onmessage = (event) => {
       wsGame?.receive(event.data)
       // 大厅阶段服务端给的是 `phase: 'LOBBY'` 的空快照；一旦变成真牌局就切进牌桌。
-      // 这样**所有已成连接的人**都会自动进桌 —— 不只是点「开始对局」的房主。
-      if (wsGame !== null && game.value === null && wsGame.api.snapshot.value.phase !== 'LOBBY') {
+      // 只有"真牌局、且还没结算"的快照才进桌。
+      //
+      // 之前只判断 `phase !== 'LOBBY'`，结果点「下一局」收起结算面板后，服务端任何一帧
+      // 非大厅快照（结算态、代打超时帧）又会把牌桌顶回来 —— 表现就是"点了下一局还停在牌桌上"。
+      // 结算态（`settle !== null` / `status === 'round-over'`）一律留在房间视图里等下一局开局。
+      const next = wsGame?.api.snapshot.value
+      if (wsGame !== null && game.value === null && next !== undefined
+        && next.phase !== 'LOBBY' && next.settle === null && next.status === 'playing') {
         game.value = wsGame.api
         status.value = 'playing'
       }
@@ -407,6 +413,10 @@ export function useNanfengWsOnline(options: NanfengWsOnlineOptions): NanfengWsOn
     seats.value = []
     mySeat.value = -1
     rejoinCode = ''
+    // 必须清存档：否则下次打开页面 `resume()` 还会去找这个已经退掉的房间。
+    try {
+      window.localStorage.removeItem(STORAGE_KEY)
+    } catch { /* 忽略 */ }
   }
 
   onScopeDispose(() => {

@@ -336,7 +336,13 @@ const scoreDirectionFor = (playerIndex: number) => scoreDirection(scoreDeltaFor(
 const hoveredWaits = computed(() => hoveredDiscard.value
   ? props.userTingOptions.find((option) => option.discard === hoveredDiscard.value) ?? null
   : null)
-const activeWaits = computed(() => hoveredWaits.value || props.userDiscardWaits
+const selectedWaits = computed(() => {
+  if (props.selectedIndex < 0) return null
+  const tile = props.user.hand[props.selectedIndex]
+  if (tile === undefined) return null
+  return props.userTingOptions.find((option) => option.discard === tile) ?? null
+})
+const activeWaits = computed(() => hoveredWaits.value || selectedWaits.value || props.userDiscardWaits
   || (props.selectedIndex < 0 && (props.bloodFlow || !props.isUserTurn) ? props.userCurrentWaits : null))
 const bloodFlowWaitTiles = computed(() => (activeWaits.value?.tiles ?? []).map(item => {
   const scores = activeWaits.value?.discard ? props.bloodFlow?.discardWaitScores?.[activeWaits.value.discard] : props.bloodFlow?.waits
@@ -361,6 +367,12 @@ const showAutoPlay = computed(() => Boolean(props.autoPlayEnabled)
 // 操作按钮行与倒计时同行：任一方可见时整行出现。
 const showTurnRow = computed(() => Boolean(props.actionPrompt || props.isUserTurn || props.userCurrentWaits))
 const tingDiscardTiles = computed(() => new Set(props.userTingOptions.map((option) => option.discard)))
+/**
+ * 手上选中一张牌时，牌河里已经打出去的相同牌加黄光 —— 点一下就知道这张还剩几张。
+ * 只有"自己点选"（`selectedIndex`）触发；悬停不触发，避免扫过手牌时牌河闪。
+ */
+const riverHighlightTile = computed<TileType | null>(() =>
+  props.selectedIndex >= 0 ? props.user.hand[props.selectedIndex] ?? null : null)
 function isTingDiscard(index: number, tile: TileType) {
   return props.isUserTurn && tingDiscardTiles.value.has(tile)
     && (!props.bloodFlow?.seats[props.user.seat].locked || index === userDrawnIndex.value)
@@ -576,6 +588,7 @@ function onAvatarError(entry: GamePlayer) {
       :key="`${themeName}:${tableLoadAttempt}`"
       :theme-name="themeName"
       :players="players" :local-seat="user.seat" :current-player="currentPlayer" :last-discard="lastDiscard"
+      :highlight-tile="riverHighlightTile"
       :wall="wall" :wall-head-drawn="wallHeadDrawn" :wall-count="wallCount"
       :horses="result?.horses" :reveal-hands="tableRevealHands" :winner-index="winningPlayerIndex"
       :joker-tiles="jokerTiles" :wildcard-tiles="wildcardTiles"

@@ -34,7 +34,8 @@ import { createKongWeather } from './table/three/kongWeather'
 import { preloadWeatherAssets } from './table/three/kongWeatherAssets'
 
 const props = withDefaults(defineProps<TableProps>(), {
-  players: () => [], localSeat: 0, currentPlayer: -1, lastDiscard: null, wall: () => [], wallHeadDrawn: 0, wallCount: 0, horses: () => [],
+  players: () => [], localSeat: 0, currentPlayer: -1, lastDiscard: null, highlightTile: null,
+  wall: () => [], wallHeadDrawn: 0, wallCount: 0, horses: () => [],
   revealHands: false, winnerIndex: -1, winEffect: null, winPresentation: null,
   jokerTiles: () => [],
   wildcardTiles: () => [],
@@ -628,6 +629,7 @@ watch(
     player.melds.map((meld) => `${meld.type}:${meld.from ?? '-'}:${meld.tiles.join(',')}`).join('|'),
   ]).flat() as unknown[]).concat(
     props.lastDiscard?.id,
+    props.highlightTile,
     props.revealHands,
     props.winnerIndex,
     props.winEffect?.id,

@@ -67,6 +67,36 @@ export function useNanfengWsGame(options: NanfengWsOptions): NanfengWsGame {
   let lastError: string | null = null
   /** 开局音效只放一次（WS 模式没有本地开局演出，只能靠第一份真牌局快照触发）。 */
   let playedStart = false
+  /** 本地假演：当前"已发到手上几张"；`null` = 演出结束（按真实手牌显示）。 */
+  let revealed: number | null = null
+  let revealTimer: ReturnType<typeof setInterval> | null = null
+
+  /**
+   * 本地补一段发牌动画：0 → 13 张，约 0.9 秒。
+   *
+   * 纯表现：不碰服务端状态，也不影响任何判定。演完 `revealed` 归 null，
+   * 投影层就按真实手牌渲染（自摸那张仍然单独摆开）。
+   */
+  function startOpening(_dealer: number): void {
+    if (revealTimer !== null) clearInterval(revealTimer)
+    revealed = 0
+    revealTimer = setInterval(() => {
+      if (revealed === null) return
+      revealed += 1
+      const snap = snapshot.value
+      snapshot.value = {
+        ...snap,
+        dealtCount: revealed,
+        opening: { stage: 'deal', dice: snap.dice, thrower: snap.dealer, dealer: snap.dealer },
+      }
+      if (revealed >= 13) {
+        if (revealTimer !== null) clearInterval(revealTimer)
+        revealTimer = null
+        revealed = null
+        snapshot.value = { ...snapshot.value, dealtCount: null, opening: null }
+      }
+    }, 70)
+  }
   /** 轮空观战时点头像选的镜头座位：纯本地表现，不会被快照覆盖。 */
   let spectatorView: number | null = null
 
@@ -135,15 +165,23 @@ export function useNanfengWsGame(options: NanfengWsOptions): NanfengWsGame {
     // 观战时保留本地选的镜头；在桌上则永远从自己看出去。
     const viewerSeat = raw.viewer.kind === 'player' ? raw.viewer.seat : null
     const viewSeat = viewerSeat === null ? (spectatorView ?? undefined) : null
-    // 开局音效：服务端开局后推的第一份真牌局快照（大厅阶段是 `phase: 'LOBBY'`）。
+
+    // 开局演出（**本地假演**）：服务端一次就把 13/14 张全给你，没有"发牌过程"这回事。
+    // 这里自己补一段 0→13 张的揭示动画 + 一声开局音，让进桌不是一个瞬间跳变。
     if (!playedStart && raw.phase !== 'LOBBY') {
       playedStart = true
       sound('game_start.mp3')
+      startOpening(raw.dealer)
     }
     const previous = snapshot.value
     const next = wsSnapshotToNanfeng(raw, { viewSeat, lastError: null })
+    // 演出期间覆盖"已发到手上几张"，投影层会把每家手牌截断到这个张数。
+    if (revealed !== null) {
+      next.dealtCount = revealed
+      next.opening = { stage: 'deal', dice: next.dice, thrower: next.dealer, dealer: next.dealer }
+    }
     snapshot.value = next
-    playDiff(previous, next)
+    if (revealed === null) playDiff(previous, next)
   }
 
   const api: NanfengMatchApi = {
@@ -182,6 +220,11 @@ export function useNanfengWsGame(options: NanfengWsOptions): NanfengWsGame {
     },
     applyRemote() {
       return { ok: false, error: 'WS 模式由服务端权威，客户端不能替别人落子' }
+    },
+    // 牌桌会通过 `api.setSoundSink` 把播放器塞进来（`NanfengTable` 的 onMounted）。
+    // 注意必须挂在 `api` 上：牌桌拿到的是 api，不是这个 composable 的返回对象。
+    setSoundSink(sink) {
+      sound = sink
     },
   }
 

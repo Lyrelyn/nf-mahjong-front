@@ -86,10 +86,12 @@ function seatName(payload: WsSnapshotPayload, tableSeat: number): string {
 }
 
 /** 买码位：本局轮空的人。没轮空（4 人局）时 `count` 为 0。 */
-function maOf(payload: WsSnapshotPayload): MaSnapshot {
+function maOf(payload: WsSnapshotPayload, humanSeat: number): MaSnapshot {
   const sittingOut = payload.seating.sittingOut
   const buyerName = sittingOut === null ? '' : (payload.slots[sittingOut]?.nickname ?? '')
   const detail = payload.lastSettle?.maDetail ?? []
+  // 我这一局轮空 → 买码的就是"你"
+  const isHumanBuyer = humanSeat < 0 && payload.maCount > 0
   return {
     count: payload.maCount ?? 0,
     // 码牌局中不公开：只有结算帧/结算快照里才带牌面
@@ -98,7 +100,9 @@ function maOf(payload: WsSnapshotPayload): MaSnapshot {
     delta: payload.lastSettle?.maDelta ?? 0,
     score: payload.maScore ?? 0,
     buyerName,
-    isHumanBuyer: buyerName !== '',
+    // "我是买码的人" = 我这一局轮空（观战）。以前写成 `buyerName !== ''`，
+    // 结果 5 人房里**所有人都**看到买码席写着"你"。
+    isHumanBuyer,
   }
 }
 
@@ -145,7 +149,7 @@ export function wsSnapshotToNanfeng(
     pending: pendingOf(payload, humanSeat),
     outcome: null,
     settle: payload.lastSettle === null ? null : (payload.lastSettle as SettleSnapshot),
-    ma: maOf(payload),
+    ma: maOf(payload, humanSeat),
     viewSeat,
     opening: null,
     dealAnimation: { playerIndex: -1, count: 0, serial: 0 },

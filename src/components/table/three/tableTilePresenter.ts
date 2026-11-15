@@ -268,6 +268,19 @@ function addDiscards(playerIndex) {
       scene.add(marker)
       dynamicGroups.push(marker)
     }
+    // 手上选中的那张牌：牌河里已经打出去的相同牌加黄光，一眼看出"还剩几张"。
+    // 与最新一张弃牌的垫片错开高度，避免共面闪烁。
+    if (props.highlightTile != null && tileName === props.highlightTile) {
+      const glow = new THREE.Mesh(
+        ownDynamic(new RoundedBoxGeometry(.88, .04, 1.14, 2, .02)),
+        scene.userData.highlightMaterial,
+      )
+      glow.position.set(transform.x, y - .245, transform.z + PLAY_AREA_OFFSET_Z)
+      glow.rotation.y = transform.rotation
+      glow.receiveShadow = true
+      scene.add(glow)
+      dynamicGroups.push(glow)
+    }
   })
 }
 

@@ -34,8 +34,12 @@ describe('无头随机对局', () => {
     const s = runStats(200, DEFAULT_RULE_CONFIG, 1);
     expect(s.rounds).toBe(200);
     // 纯随机乱打时这里只有 ~1%（实测胡 1 / 荒庄 199）——那样"判胡 → 计分 → 结算"整条路几乎
-    // 没被 fuzz 压到。加了"优先打孤张"之后实测约 30%。阈值取 40（20%）留余量。
-    expect(s.hu).toBeGreaterThan(40);
+    // 没被 fuzz 压到。加了"优先打孤张"之后实测约 30%。
+    //
+    // 2026-11 改规后平胡只能自摸，随机对局里最常见的就是平胡，点炮胡整条路变窄 ——
+    // 实测从 ~60 掉到 24/200（12%）。阈值放到 12（6%）：仍然要求"胡到两位数百分比"，
+    // 但不能再拿改规前的 40（20%）当基准，否则一改规则这条 fuzz 就红。
+    expect(s.hu).toBeGreaterThan(12);
     expect(s.huangZhuang).toBeGreaterThan(40);
     expect(s.hu + s.huangZhuang).toBe(200);
   }, 120_000);

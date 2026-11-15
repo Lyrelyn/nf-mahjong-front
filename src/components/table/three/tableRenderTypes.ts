@@ -23,6 +23,11 @@ export interface TableProps {
   localSeat?: number
   currentPlayer?: number
   lastDiscard?: LastDiscard | null
+  /**
+   * 高亮牌河里的同名牌：手上选中一张牌时，牌河里已经打出去的相同牌加黄光垫片，
+   * 让"这张还剩几张"一眼可见。传 null / 不传表示不高亮。
+   */
+  highlightTile?: TileType | null
   wall?: TileType[]
   wallHeadDrawn?: number
   wallCount?: number

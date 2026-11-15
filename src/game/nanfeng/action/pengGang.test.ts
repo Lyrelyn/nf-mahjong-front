@@ -22,6 +22,14 @@ const handOf = (tiles: readonly Tile[]): HandState => {
   return h;
 };
 
+/**
+ * 13 张，并进 41 成**碰碰胡**：`11×3 + 12×3 + 13×3 + 21×3 + 41,41`。
+ *
+ * 2026-11 改规后平胡只能自摸，所以"测点炮"的用例一律改用碰碰胡 —— 仍用平胡手牌的话，
+ * `canHuRon` 会先被"平胡不能点炮"挡掉，测到的就不是这条用例本来要测的东西了。
+ */
+const PENG_PENG_13: readonly Tile[] = [11, 11, 11, 12, 12, 12, 13, 13, 13, 21, 21, 21, 41];
+
 describe('碰与明杠的门槛', () => {
   it('碰需要两张，明杠需要三张', () => {
     const h = handOf([11, 11, 11]);
@@ -97,7 +105,7 @@ describe('自摸与点炮', () => {
   });
 
   it('点炮时把待胡的牌并进手牌再判：差一张就是胡', () => {
-    const h = handOf([11, 12, 13, 11, 12, 13, 21, 22, 23, 31, 31, 31, 41]);
+    const h = handOf(PENG_PENG_13);
     expect(canHuRon(h, 41, cfg)).toBe(true);
     expect(canHuSelf(addTile(h, 41), cfg)).toBe(true);
   });
@@ -122,7 +130,7 @@ describe('十三烂的自摸限制（R-05）', () => {
   });
 
   it('不是十三烂的手牌不受这条限制', () => {
-    const h = handOf([11, 12, 13, 11, 12, 13, 21, 22, 23, 31, 31, 31, 41]);
+    const h = handOf(PENG_PENG_13);
     expect(canHuRon(h, 41, cfg)).toBe(true);
   });
 });
@@ -143,7 +151,31 @@ describe('假胡的点炮开关（hu.jiaHu.allowRon）', () => {
 
   it('allowRon 为假只挡住假胡，真结构照常点炮', () => {
     const noRon: RuleConfig = { ...cfg, hu: { ...cfg.hu, jiaHu: { enabled: true, allowRon: false } } };
-    const h = handOf([11, 12, 13, 11, 12, 13, 21, 22, 23, 31, 31, 31, 41]);
+    const h = handOf(PENG_PENG_13);
     expect(canHuRon(h, 41, noRon)).toBe(true);
+  });
+});
+
+/**
+ * 2026-11 改规：**平胡不能胡别人的牌**（点炮 / 抢杠都算别人的牌），只能自摸。
+ * 其余牌型一律照常 —— 规则只认"标准结构 + 标签里只有 PING_HU 一个"这手牌。
+ */
+describe('纯平胡只能自摸（2026-11 改规）', () => {
+  /** `11-12-13 + 21-22-23 + 31×3 + 41×3 + 51,51` 将，并进 51 即胡 → 标签只有 PING_HU。 */
+  const PLAIN_13: readonly Tile[] = [11, 12, 13, 21, 22, 23, 31, 31, 31, 41, 41, 41, 51];
+
+  it('平胡点炮被拒，自摸照常', () => {
+    expect(canHuRon(handOf(PLAIN_13), 51, cfg)).toBe(false);
+    expect(canHuSelf(handOf([...PLAIN_13, 51]), cfg)).toBe(true);
+  });
+
+  it('碰碰胡照常点炮（"除平胡外全都能点炮"）', () => {
+    expect(canHuRon(handOf(PENG_PENG_13), 41, cfg)).toBe(true);
+  });
+
+  it('一色只是加成，底下的标准结构仍能点炮', () => {
+    // 全万子：11-12-13 + 14×3 + 16×3 + 19×3 + 17,17 → PING_HU + QING_YI_SE_ZHEN 两个标签
+    const qingSe = handOf([12, 13, 14, 14, 14, 16, 16, 16, 17, 17, 19, 19, 19]);
+    expect(canHuRon(qingSe, 11, cfg)).toBe(true);
   });
 });
