@@ -25,7 +25,11 @@ const mySeat = computed(() => props.online.mySeat.value)
  * 只显示名字 + 「人机」，不参与"是否准备"的判定（它们的 ready 恒真）。
  */
 const slots = computed(() => Array.from({ length: roomSize.value }, (_, seat) => {
-  const row = seats.value.find((item) => item.seat === seat)
+  // `isAi` 只有 WS 后端会给（VibeHub 那条路的人机是房主本机 AI，不在 roster 里），
+  // 所以这里按运行时字段读，不去改共享的 LobbySeat 类型。
+  const row = seats.value.find((item) => item.seat === seat) as
+    | ((typeof seats.value)[number] & { isAi?: boolean })
+    | undefined
   const human = row !== undefined && row.isAi !== true
   const ai = row !== undefined && row.isAi === true
   // name === '' 表示**空位**；有人或有 AI 就有名字。
