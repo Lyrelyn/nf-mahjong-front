@@ -62,12 +62,14 @@ const headingClass = computed(() => themePresentationByName(themeName.value).typ
 const onlinePlayers = ref<4 | 5>(5)
 const onlineMa = ref(2)
 /**
- * 联机后端二选一：
- *   - `VITE_ONLINE_BACKEND=ws` → 自己的 FastAPI + WS（`nf-mahjong-backend`，权威在服务端）；
- *   - 其他（默认）→ 旧 VibeHub P2P（房主权威，需要平台登录）。
- * 两条路的房间面板长一样，所以这里收敛成同一个形状给大厅用。
+ * 联机后端：
+ *   - **默认**走自己的 FastAPI + WS（`nf-mahjong-backend`，权威在服务端）；
+ *   - 只有显式 `VITE_ONLINE_BACKEND=vibe` 才回到旧 VibeHub P2P（房主权威，需要平台登录）。
+ *
+ * 默认反过来很关键：以前"忘了配 env 就静默退回 VibeHub"，部署到 cloudpage 后只会弹一句
+ * "需要 VibeHub SDK"，完全看不出是构建时没注入。现在默认连自家后端，配错会直接报网络错。
  */
-const useWsBackend = import.meta.env.VITE_ONLINE_BACKEND === 'ws'
+const useWsBackend = import.meta.env.VITE_ONLINE_BACKEND !== 'vibe'
 const online = (useWsBackend
   ? useNanfengWsOnline({
       baseUrl: import.meta.env.VITE_NANFENG_WS_BASE,

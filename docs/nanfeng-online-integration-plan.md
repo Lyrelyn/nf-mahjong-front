@@ -120,6 +120,11 @@ export interface NanfengMatchApi {
 
 ### 5.3 联调注意
 
+- **连接位数量是房间属性，不是常量**：`capacity ∈ {4, 5}`（建房时传）。
+  - `4` = 纯四人局：只有 4 个连接位，`seating.sittingOut` 恒为 `null`，不换座，买码关闭；
+  - `5` = 4 打 + 1 人轮空买码：每局结束换座。
+  - 客户端不用猜：`rejoin_ok.slots` 与快照里的 `capacity` 就是本房间的连接位数；
+    快照 `seating.table` 长度恒为 4，第 5 个位置看 `seating.sittingOut`。
 - 5 个窗口要 **5 个不同 `playerId`**（同一身份只能在一个房间 → `ALREADY_IN_ROOM`）。
 - `ROOM_MAX` 默认 4，几轮测试就满（**对局中的房间不会被 TTL 回收**，只能重启服务或打完）
   → 联调时把 `.env` 的 `ROOM_MAX` 调大。
@@ -269,7 +274,17 @@ export interface NanfengMatchApi {
 ```
 
 **准备、开局、加入、离开都是 REST，不走 WS。** 失败回 `{kind:'error', code}`：
-`UNKNOWN_MESSAGE` / `ROOM_NOT_PLAYING` / `SITTING_OUT` / `SEAT_RELEASED` / 引擎校验错误。
+`ROOM_NOT_PLAYING` / `SITTING_OUT` / `SEAT_RELEASED` / `INVALID_ACTION` / 引擎校验错误。
+
+> **2026-11 后端补充（信封容错；字段名一个没改）**
+>
+> - 心跳：`{"kind":"ping"}` 与老客户端的 `{"type":"ping"}` 都回 `{"kind":"pong"}`；
+> - **未知信封一律静默忽略、不回 `error`**（`{}`、`{"kind":"future_feature"}` 之类）——
+>   客户端收到 error 会走统一错误分支，不该因为一个探活包就误判成业务失败；
+> - 因此 `UNKNOWN_MESSAGE` **不再出现**；动作本身非法仍回 `INVALID_ACTION`/引擎错误；
+> - `capacity=4` 时 `maCount` 在建房响应里就是 `0`（不再回一个不会生效的请求值）；
+> - `GET /api/rooms/{id}` 同时返回 `seats`（键 `seat`）与 `slots`（键 `slot`，对齐 `WsSeat`）。
+
 
 ### 10.5 快照字段（`snapshot_for` + `project_view`，全部已抄）
 

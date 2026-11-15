@@ -157,8 +157,10 @@ export function useNanfengWsOnline(options: NanfengWsOnlineOptions): NanfengWsOn
     try {
       const created = await post<{ roomId: string }>('/api/rooms', {
         mode: 'east',
-        capacity: 5,
+        // 4 或 5，后端只认这两个值（3 / 6 直接 422）：决定连接位数与有无轮空买码位。
+        capacity: options.players(),
         matchLength: options.matchLength ?? 4,
+        // 4 人房没有轮空位，后端会忽略 maCount；显式传 0 更清楚。
         maCount: options.players() === 4 ? 0 : options.maCount(),
         rulesetId: 'nanfeng',
         playerId,

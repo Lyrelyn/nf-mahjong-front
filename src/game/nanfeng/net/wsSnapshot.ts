@@ -34,6 +34,8 @@ export interface WsOption {
 export interface WsSnapshotPayload {
   seq: number
   roomId: string
+  /** 本房间真实连接位数：4 = 没有轮空买码位；5 = 有。**别再假设 5**。 */
+  capacity?: number
   matchLength?: number
   matchFinished?: boolean
   maCount: number
