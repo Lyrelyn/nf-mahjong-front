@@ -105,7 +105,11 @@ const debugText = computed(() => {
 
 // 进桌即开局。漏了这一行就是"牌桌渲染出来了但没有任何牌"——快照停在初始状态，
 // 手牌/牌墙/弃牌全是空的。
-onMounted(() => game.start())
+onMounted(() => {
+  // 联机（服务端权威）时引擎在外面：把本组件的播放器交给它，这样出牌/碰杠/胡/开局才有声。
+  game.setSoundSink?.(playEffect)
+  game.start()
+})
 
 function onDiscard(index: number) {
   const tile = tileOfHandIndex(snap.value, index)

@@ -42,6 +42,13 @@ export interface NanfengWsGame {
   lastAppliedSeq: () => number
   /** 最近一次服务端返回的错误（`{kind:'error'}`）；没有则为 null。 */
   lastError: () => string | null
+  /**
+   * 后补音效出口：牌桌挂载时把自己的播放器塞进来。
+   *
+   * 比"从页面根组件一路传下来"可靠——`NanfengTable` 本来就是音频的消费方，
+   * 单机时它也是这么取的，两边行为一致。重复调用以最后一次为准。
+   */
+  setSoundSink: (sink: (name: string, volume?: number) => void) => void
 }
 
 function isSnapshotFrame(raw: unknown): raw is WsSnapshotPayload & { kind: string } {
@@ -54,10 +61,12 @@ export function useNanfengWsGame(options: NanfengWsOptions): NanfengWsGame {
   const snapshot = shallowRef<NanfengSnapshot>(
     createEmptyNanfengSnapshot(options.seatNames ?? ['本家', '下家', '对家', '上家']),
   )
-  const sound = options.playSound ?? (() => {})
+  let sound = options.playSound ?? (() => {})
   let appliedSeq = -1
   let reqId = 0
   let lastError: string | null = null
+  /** 开局音效只放一次（WS 模式没有本地开局演出，只能靠第一份真牌局快照触发）。 */
+  let playedStart = false
   /** 轮空观战时点头像选的镜头座位：纯本地表现，不会被快照覆盖。 */
   let spectatorView: number | null = null
 
@@ -126,6 +135,11 @@ export function useNanfengWsGame(options: NanfengWsOptions): NanfengWsGame {
     // 观战时保留本地选的镜头；在桌上则永远从自己看出去。
     const viewerSeat = raw.viewer.kind === 'player' ? raw.viewer.seat : null
     const viewSeat = viewerSeat === null ? (spectatorView ?? undefined) : null
+    // 开局音效：服务端开局后推的第一份真牌局快照（大厅阶段是 `phase: 'LOBBY'`）。
+    if (!playedStart && raw.phase !== 'LOBBY') {
+      playedStart = true
+      sound('game_start.mp3')
+    }
     const previous = snapshot.value
     const next = wsSnapshotToNanfeng(raw, { viewSeat, lastError: null })
     snapshot.value = next
@@ -176,5 +190,6 @@ export function useNanfengWsGame(options: NanfengWsOptions): NanfengWsGame {
     receive,
     lastAppliedSeq: () => appliedSeq,
     lastError: () => lastError,
+    setSoundSink: (sink) => { sound = sink },
   }
 }

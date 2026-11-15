@@ -53,6 +53,8 @@ export interface NanfengWsOnline {
   joinRoom: () => Promise<void>
   toggleReady: () => Promise<void>
   startMatch: () => Promise<void>
+  /** 刷新后恢复上次的房间（没有存档时返回 false）。 */
+  resume: () => Promise<boolean>
   leave: () => Promise<void>
 }
 
@@ -63,13 +65,19 @@ function baseUrlOf(explicit?: string): string {
   return (explicit ?? '').replace(/\/$/, '')
 }
 
-/** 每个浏览器一个稳定 playerId：后端开发旁路拿它当身份（多开窗口才分得清）。 */
+/**
+ * 每个**标签页**一个 playerId。
+ *
+ * 后端开发旁路把 `playerId` 当身份，而 `localStorage` 是整站共享的 —— 用它的话
+ * 同一浏览器开两个标签页会拿到同一个 id，第二个"墙"其实是同一个人重新入座（rejoin），
+ * 于是永远凑不齐两个人。改用 `sessionStorage`：同一标签页刷新不变，不同标签页互不影响。
+ */
 function loadPlayerId(): string {
   try {
-    const saved = window.localStorage.getItem(PLAYER_KEY)
+    const saved = window.sessionStorage.getItem(PLAYER_KEY)
     if (saved !== null && saved !== '') return saved
     const fresh = `nf-${Math.random().toString(36).slice(2, 10)}`
-    window.localStorage.setItem(PLAYER_KEY, fresh)
+    window.sessionStorage.setItem(PLAYER_KEY, fresh)
     return fresh
   } catch {
     return 'nf-anon'
@@ -212,11 +220,62 @@ export function useNanfengWsOnline(options: NanfengWsOnlineOptions): NanfengWsOn
    * 大厅阶段的快照是 `phase: 'LOBBY'`，`game` 要等真牌局才暴露，避免误进牌桌。
    */
   function enterLobbySocket(): void {
-    wsGame = useNanfengWsGame({
+    const created = useNanfengWsGame({
       send: (message) => { socket?.send(JSON.stringify(message)) },
       playSound: options.playSound,
     })
+    wsGame = created
+    // 「下一局」在服务端权威下不是本地动作：点它 = 自己准备，凑齐后房主自动开局。
+    created.api.nextRound = () => { void readyForNextRound() }
     connect()
+  }
+
+  /** 读上次的存档（房间号 + 重连码 + 座位）。 */
+  function loadSaved(): { roomId: string; rejoinCode: string; seat: number } | null {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY)
+      if (raw === null) return null
+      const parsed = JSON.parse(raw) as { roomId?: unknown; rejoinCode?: unknown; seat?: unknown }
+      if (typeof parsed.roomId !== 'string' || typeof parsed.rejoinCode !== 'string') return null
+      return {
+        roomId: parsed.roomId,
+        rejoinCode: parsed.rejoinCode,
+        seat: typeof parsed.seat === 'number' ? parsed.seat : 0,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * 刷新 / 切回页面时恢复上次的房间。
+   *
+   * 用存下来的 `rejoin_code` 直接握手：服务端回 `rejoin_ok` + 全量快照，
+   * 座位、手牌、牌河都回来，**不会再撞 `ALREADY_IN_ROOM`**（那个错就是"人还在房里又去建房"）。
+   * 房间已经不存在（过期/被关）时清掉存档，回到大厅。
+   */
+  async function resume(): Promise<boolean> {
+    const saved = loadSaved()
+    if (saved === null) return false
+    roomId.value = saved.roomId
+    rejoinCode = saved.rejoinCode
+    mySeat.value = saved.seat
+    status.value = 'lobby'
+    enterLobbySocket()
+    try {
+      const info = await fetch(url(`/api/rooms/${encodeURIComponent(saved.roomId)}`), { credentials: 'include' })
+      if (!info.ok) throw new Error('ROOM_NOT_FOUND')
+      await refreshRoom()
+      return true
+    } catch {
+      await clearPreviousRoom()
+      closeSocket()
+      roomId.value = ''
+      mySeat.value = -1
+      rejoinCode = ''
+      status.value = 'idle'
+      return false
+    }
   }
 
   async function createRoom(): Promise<void> {
@@ -287,17 +346,38 @@ export function useNanfengWsOnline(options: NanfengWsOnlineOptions): NanfengWsOn
     }
   }
 
-  async function toggleReady(): Promise<void> {
+  /** 显式设置自己的准备状态（开局/下一局都靠它）。 */
+  async function setReady(ready: boolean): Promise<void> {
     if (roomId.value === '' || rejoinCode === '') return
-    const mine = seats.value.find((seat) => seat.slot === mySeat.value)
-    const next = !(mine?.ready ?? false)
     try {
       await post(`/api/rooms/${encodeURIComponent(roomId.value)}/ready`,
-        { seat: mySeat.value, rejoinCode, ready: next })
+        { seat: mySeat.value, rejoinCode, ready })
       await refreshRoom()
     } catch (caught) {
       error.value = caught instanceof Error ? caught.message : '准备失败'
     }
+  }
+
+  async function toggleReady(): Promise<void> {
+    const mine = seats.value.find((seat) => seat.slot === mySeat.value)
+    await setReady(!(mine?.ready ?? false))
+  }
+
+  /**
+   * 「下一局」= 自己准备；全房都准备好了，由房主自动开局。
+   *
+   * 服务端没有"回合自动继续"：每一局都要再走一次 `POST /start`（只有建房者能调），
+   * 所以这里把它做成"点下一局就是准备，凑齐了房主自动开"。
+   */
+  async function readyForNextRound(): Promise<void> {
+    if (roomId.value === '') return
+    game.value = null          // 先把结算面板收掉，等新快照再进桌
+    status.value = 'lobby'
+    await setReady(true)
+    if (!isHost.value) return
+    const humans = seats.value.filter((seat) => seat.isAi !== true)
+    if (humans.length === 0 || humans.some((seat) => !seat.ready)) return
+    await startMatch()
   }
 
   async function startMatch(): Promise<void> {
@@ -336,6 +416,6 @@ export function useNanfengWsOnline(options: NanfengWsOnlineOptions): NanfengWsOn
   return {
     roomId, nickname, joinCode, seats, mySeat, capacity, error, status, isHost, botNames, game,
     supportsBots: false as const,
-    createRoom, joinRoom, toggleReady, startMatch, leave,
+    createRoom, joinRoom, toggleReady, startMatch, resume, leave,
   }
 }

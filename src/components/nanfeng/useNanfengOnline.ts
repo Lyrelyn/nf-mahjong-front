@@ -55,6 +55,8 @@ export interface NanfengOnline {
   joinRoom: () => Promise<void>
   toggleReady: () => Promise<void>
   startMatch: () => Promise<void>
+  /** 刷新后恢复上次的房间（只有 WS 后端实现；没有存档或失败返回 false）。 */
+  resume?: () => Promise<boolean>
   leave: () => Promise<void>
 }
 

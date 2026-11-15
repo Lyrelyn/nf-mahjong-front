@@ -105,7 +105,11 @@ async function toggleFullscreen() {
   }
   syncFullscreen()
 }
-onMounted(() => document.addEventListener('fullscreenchange', syncFullscreen))
+onMounted(() => {
+  document.addEventListener('fullscreenchange', syncFullscreen)
+  // 刷新/切回页面：如果上次还有房间存档，直接回到那个房间（不然会撞 ALREADY_IN_ROOM）。
+  if (useWsBackend) void online.resume?.()
+})
 onBeforeUnmount(() => document.removeEventListener('fullscreenchange', syncFullscreen))
 
 function start(next: NanfengLobbySetup) {

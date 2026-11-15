@@ -172,6 +172,13 @@ export interface NanfengMatchApi {
    * 非法就返回错误、**不**写 `lastError`（远端手滑不该让房主的对局停下来）。
    */
   applyRemote: (action: PlayerAction) => { ok: true } | { ok: false; error: string }
+  /**
+   * 可选：后补音效出口。
+   *
+   * 单机实现构造时已经拿到 `playSound`，不需要它；WS 联机的引擎在服务端，
+   * 音效由牌桌挂载时把播放器塞进来（`useNanfengWsGame` 实现）。
+   */
+  setSoundSink?: (sink: (name: string, volume?: number) => void) => void
 }
 
 /** 每次状态变化后交给联机层的"权威来源"。 */
